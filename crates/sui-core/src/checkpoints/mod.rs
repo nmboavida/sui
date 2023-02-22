@@ -728,6 +728,7 @@ impl CheckpointBuilder {
                 // for now, just log this value. Later it must be included in
                 // EndOfEpochData::epoch_commitments
                 info!("Epoch {epoch} root state hash digest: {root_state_digest:?}");
+                self.metrics.highest_accumulated_epoch.set(epoch as i64);
 
                 Some(EndOfEpochData {
                     next_epoch_committee: committee.voting_rights,
@@ -739,7 +740,7 @@ impl CheckpointBuilder {
                     //   epoch_commitments: vec![root_state_digest.into()]
                     //
                     // When the accumulator is deemed stable.
-                    epoch_commitments: vec![],
+                    epoch_commitments: vec![root_state_digest],
                 })
             } else {
                 None

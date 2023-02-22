@@ -803,8 +803,8 @@ impl SuiNode {
             .ok_or_else(|| anyhow::anyhow!("Transaction Orchestrator is not enabled in this node."))
     }
 
-    /// This function waits for a signal from the checkpoint executor to indicate that on-chain
-    /// epoch has changed. Upon receiving such signal, we reconfigure the entire system.
+    /// This function awaits the completion of checkpoint execution of the current epoch,
+    /// after which it iniitiates reconfiguration of the entire system.
     pub async fn monitor_reconfiguration(self: Arc<Self>) -> Result<()> {
         let mut checkpoint_executor = CheckpointExecutor::new(
             self.state_sync.subscribe_to_synced_checkpoints(),
@@ -901,6 +901,23 @@ impl SuiNode {
                         new_epoch_start_state,
                     )
                     .await;
+
+                // at this point we have processed tx reverts, therefore the
+                // live object set is well defined
+                #[cfg(msim)]
+                {
+                    let live_object_set = self
+                        .state
+                        .database
+                        .iter_live_object_set()
+                        .map(|oref| oref.2);
+                    let mut acc = sui_types::accumulator::Accumulator::default();
+                    fastcrypto::hash::MultisetHash::insert_all(&mut acc, live_object_set);
+                    assert_eq!(
+                        fastcrypto::hash::MultisetHash::digest(&acc),
+                        _root_state_digest
+                    );
+                }
 
                 narwhal_epoch_data_remover
                     .remove_old_data(next_epoch - 1)

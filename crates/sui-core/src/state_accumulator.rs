@@ -3,6 +3,8 @@
 
 use mysten_metrics::monitored_scope;
 use sui_types::committee::EpochId;
+use sui_types::digests::ObjectDigest;
+use sui_types::storage::ObjectKey;
 use tracing::debug;
 use typed_store::Map;
 
@@ -42,22 +44,59 @@ impl StateAccumulator {
 
         let mut acc = Accumulator::default();
 
+        // process insertions to the set
         acc.insert_all(
             effects
                 .iter()
-                .flat_map(|fx| fx.created().iter().map(|(obj_ref, _)| obj_ref.2)),
+                .flat_map(|fx| {
+                    fx.created
+                        .clone()
+                        .into_iter()
+                        .map(|(oref, _)| oref.2)
+                        .chain(fx.unwrapped.clone().into_iter().map(|(oref, _)| oref.2))
+                        .chain(fx.mutated.clone().into_iter().map(|(oref, _)| oref.2))
+                        .collect::<Vec<ObjectDigest>>()
+                })
+                .collect::<Vec<ObjectDigest>>(),
         );
+
+        // get all modified_at_versions for the fx
+        let modified_at_version_keys = effects
+            .iter()
+            .flat_map(|fx| {
+                fx.modified_at_versions
+                    .clone()
+                    .into_iter()
+                    .map(|(id, seq_num)| ObjectKey(id, seq_num))
+                    .collect::<Vec<ObjectKey>>()
+            })
+            .collect::<Vec<ObjectKey>>();
+
+        let modified_at_digests = self
+            .authority_store
+            .perpetual_tables
+            .objects
+            .multi_get(modified_at_version_keys)?
+            .iter()
+            // TODO(william) try to avoid hashing every object here by adding digest
+            // to modified_at_version itself
+            .map(|obj| obj.clone().expect("Object not found").digest())
+            .collect::<Vec<ObjectDigest>>();
+
+        // process removals from the set
         acc.remove_all(
             effects
                 .iter()
-                .flat_map(|fx| fx.deleted().iter().map(|obj_ref| obj_ref.2)),
-        );
-
-        // TODO almost certainly not currectly handling "mutated" effects.
-        acc.insert_all(
-            effects
-                .iter()
-                .flat_map(|fx| fx.mutated().iter().map(|(obj_ref, _)| obj_ref.2)),
+                .flat_map(|fx| {
+                    fx.deleted
+                        .clone()
+                        .into_iter()
+                        .map(|oref| oref.2)
+                        .chain(fx.wrapped.clone().into_iter().map(|oref| oref.2))
+                        .chain(modified_at_digests.clone().into_iter())
+                        .collect::<Vec<ObjectDigest>>()
+                })
+                .collect::<Vec<ObjectDigest>>(),
         );
 
         epoch_store.insert_state_hash_for_checkpoint(&checkpoint_seq_num, &acc)?;
