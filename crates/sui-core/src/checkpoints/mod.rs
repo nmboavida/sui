@@ -39,7 +39,7 @@ use sui_types::messages::{
     TransactionKind,
 };
 use sui_types::messages_checkpoint::{
-    CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
+    CertifiedCheckpointSummary, CheckpointCommitment, CheckpointContents, CheckpointSequenceNumber,
     CheckpointSignatureMessage, CheckpointSummary, CheckpointTimestamp, EndOfEpochData,
     TrustedCheckpoint, VerifiedCheckpoint,
 };
@@ -700,12 +700,6 @@ impl CheckpointBuilder {
             let epoch_rolling_gas_cost_summary =
                 self.get_epoch_total_gas_cost(last_checkpoint.as_ref().map(|(_, c)| c), &effects);
 
-            self.accumulator.accumulate_checkpoint(
-                effects.clone(),
-                sequence_number,
-                self.epoch_store.clone(),
-            )?;
-
             let end_of_epoch_data = if last_checkpoint_of_epoch {
                 let system_state_obj = self
                     .augment_epoch_last_checkpoint(
@@ -718,6 +712,20 @@ impl CheckpointBuilder {
                     .await?;
 
                 let committee = system_state_obj.get_current_epoch_committee().committee;
+
+                // TODO(william)
+                error!(
+                    "TESTING -- Calling accumulate for checkpoint {sequence_number} from builder"
+                );
+                self.accumulator.accumulate_checkpoint(
+                    effects.clone(),
+                    sequence_number,
+                    self.epoch_store.clone(),
+                )?;
+                error!(
+                    "TESTING -- Finished accumulate for checkpoint {sequence_number} from builder"
+                );
+
                 let root_state_digest = self
                     .accumulator
                     .digest_epoch(&epoch, sequence_number, self.epoch_store.clone())
@@ -740,9 +748,22 @@ impl CheckpointBuilder {
                     //   epoch_commitments: vec![root_state_digest.into()]
                     //
                     // When the accumulator is deemed stable.
-                    epoch_commitments: vec![root_state_digest],
+                    epoch_commitments: vec![CheckpointCommitment::from(root_state_digest)],
                 })
             } else {
+                // TODO(william)
+                error!(
+                    "TESTING -- Calling accumulate for checkpoint {sequence_number} from builder"
+                );
+                self.accumulator.accumulate_checkpoint(
+                    effects.clone(),
+                    sequence_number,
+                    self.epoch_store.clone(),
+                )?;
+                error!(
+                    "TESTING -- Finished accumulate for checkpoint {sequence_number} from builder"
+                );
+
                 None
             };
 

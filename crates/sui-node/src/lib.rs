@@ -85,6 +85,7 @@ use sui_types::quorum_driver_types::QuorumDriverEffectsQueueResult;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemState;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemStateTrait;
 use sui_types::sui_system_state::SuiSystemStateTrait;
+use tracing::error;
 use typed_store::DBMetrics;
 
 use crate::metrics::GrpcMetrics;
@@ -816,6 +817,18 @@ impl SuiNode {
             &self.registry_service.default_registry(),
         );
 
+        // TODO(william)
+        let initial_live_object_set = self
+            .state
+            .database
+            .iter_live_object_set()
+            .map(|oref| oref.2)
+            .collect::<Vec<sui_types::digests::ObjectDigest>>();
+        error!(
+            "TESTING -- INITIAL live object set digests: {:?}",
+            initial_live_object_set
+        );
+
         loop {
             let cur_epoch_store = self.state.load_epoch_store_one_call_per_task();
             // Advertise capabilities to committee, if we are a validator.
@@ -904,7 +917,7 @@ impl SuiNode {
 
                 // at this point we have processed tx reverts, therefore the
                 // live object set is well defined
-                #[cfg(msim)]
+                // #[cfg(msim)]
                 {
                     let live_object_set = self
                         .state
@@ -913,10 +926,32 @@ impl SuiNode {
                         .map(|oref| oref.2);
                     let mut acc = sui_types::accumulator::Accumulator::default();
                     fastcrypto::hash::MultisetHash::insert_all(&mut acc, live_object_set);
-                    assert_eq!(
-                        fastcrypto::hash::MultisetHash::digest(&acc),
-                        _root_state_digest
+
+                    // TODO(william) ////////////
+                    let live_object_set_copy = self
+                        .state
+                        .database
+                        .iter_live_object_set()
+                        .map(|oref| oref.2)
+                        .collect::<Vec<sui_types::digests::ObjectDigest>>();
+                    error!(
+                        "TESTING -- live object set len: {}",
+                        live_object_set_copy.len()
                     );
+                    error!(
+                        "TESTING -- live object set digests: {:?}",
+                        live_object_set_copy
+                    );
+                    let live_object_set_hash = fastcrypto::hash::MultisetHash::digest(&acc);
+
+                    error!(
+                        "TESTING -- Live object set hash: {:?}",
+                        live_object_set_hash
+                    );
+
+                    self.state
+                        .database
+                        .verify_root_state_hash(live_object_set_hash, cur_epoch_store.epoch());
                 }
 
                 narwhal_epoch_data_remover

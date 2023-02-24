@@ -9,6 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use either::Either;
+use fastcrypto::hash::{Digest, MultisetHash};
 use move_bytecode_utils::module_cache::GetModule;
 use move_core_types::resolver::ModuleResolver;
 use once_cell::sync::OnceCell;
@@ -183,6 +184,16 @@ impl AuthorityStore {
         }
 
         Ok(store)
+    }
+
+    pub fn verify_root_state_hash(&self, root_state_hash: Digest<32>, epoch: EpochId) -> SuiResult {
+        let acc = self
+            .perpetual_tables
+            .root_state_hash_by_epoch
+            .get(&epoch)?
+            .expect("Root state hash for this epoch does not exist");
+        assert_eq!(acc.1.digest(), root_state_hash);
+        Ok(())
     }
 
     pub fn get_recovery_epoch_at_restart(&self) -> SuiResult<EpochId> {

@@ -29,7 +29,9 @@ use sui_types::{
 };
 use test_utils::authority::{start_node, test_and_configure_authority_configs};
 use test_utils::{
-    authority::{spawn_test_authorities, test_authority_configs},
+    authority::{
+        spawn_test_authorities, test_authority_configs, test_authority_configs_with_objects,
+    },
     network::TestClusterBuilder,
 };
 use tokio::time::{sleep, timeout};
@@ -37,7 +39,7 @@ use tracing::{info, warn};
 
 #[sim_test]
 async fn advance_epoch_tx_test() {
-    let authorities = spawn_test_authorities([].into_iter(), &test_authority_configs()).await;
+    let authorities = spawn_test_authorities(&test_authority_configs()).await;
     let states: Vec<_> = authorities
         .iter()
         .map(|authority| authority.with(|node| node.state()))
@@ -78,7 +80,7 @@ async fn advance_epoch_tx_test() {
 async fn basic_reconfig_end_to_end_test() {
     // TODO remove this sleep when this test passes consistently
     sleep(Duration::from_secs(1)).await;
-    let authorities = spawn_test_authorities([].into_iter(), &test_authority_configs()).await;
+    let authorities = spawn_test_authorities(&test_authority_configs()).await;
     trigger_reconfiguration(&authorities).await;
 }
 
@@ -87,11 +89,10 @@ async fn reconfig_with_revert_end_to_end_test() {
     let (sender, keypair) = get_account_key_pair();
     let gas1 = Object::with_owner_for_testing(sender); // committed
     let gas2 = Object::with_owner_for_testing(sender); // (most likely) reverted
-    let authorities = spawn_test_authorities(
-        [gas1.clone(), gas2.clone()].into_iter(),
-        &test_authority_configs(),
-    )
-    .await;
+    let (configs, objects) = test_authority_configs_with_objects([gas1, gas2]);
+    let gas1 = &objects[0];
+    let gas2 = &objects[1];
+    let authorities = spawn_test_authorities(&configs).await;
     let registry = Registry::new();
 
     // gas1 transaction is committed
@@ -276,8 +277,9 @@ async fn test_validator_resign_effects() {
     // in the new epoch.
     let (sender, keypair) = get_account_key_pair();
     let gas = Object::with_owner_for_testing(sender);
-    let configs = test_authority_configs();
-    let authorities = spawn_test_authorities([gas.clone()].into_iter(), &configs).await;
+    let (configs, mut objects) = test_authority_configs_with_objects([gas]);
+    let gas = objects.pop().unwrap();
+    let authorities = spawn_test_authorities(&configs).await;
     let tx = make_transfer_sui_transaction(
         gas.compute_object_reference(),
         sender,

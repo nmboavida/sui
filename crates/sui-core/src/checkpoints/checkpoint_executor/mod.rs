@@ -24,7 +24,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use fastcrypto::hash::Digest;
 use futures::stream::FuturesOrdered;
 use itertools::izip;
 use mysten_metrics::{spawn_monitored_task, MonitoredFutureExt};

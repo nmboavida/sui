@@ -14,7 +14,7 @@ use test_utils::transaction::{
     publish_counter_package, submit_shared_object_transaction, submit_single_owner_transaction,
 };
 use test_utils::{
-    authority::{spawn_test_authorities, test_authority_configs},
+    authority::{spawn_test_authorities, test_authority_configs_with_objects},
     messages::{move_transaction, test_shared_object_transactions},
 };
 
@@ -26,16 +26,20 @@ use sui_types::{SUI_CLOCK_OBJECT_ID, SUI_CLOCK_OBJECT_SHARED_VERSION};
 /// Send a simple shared object transaction to Sui and ensures the client gets back a response.
 #[sim_test]
 async fn shared_object_transaction() {
-    let mut objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
+    let shared_object = Object::shared_for_testing();
+    let mut objects = gas_objects.clone();
     objects.push(Object::shared_for_testing());
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(objects, &configs).await;
+    let (configs, _objects) = test_authority_configs_with_objects([]);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Make a test shared object certificate.
-    let transaction = test_shared_object_transactions().pop().unwrap();
+    let transaction = test_shared_object_transactions(Some(shared_object), Some(gas_objects))
+        .pop()
+        .unwrap();
 
     // Submit the transaction. Note that this transaction is random and we do not expect
     // it to be successfully executed by the Move execution engine.
@@ -47,16 +51,20 @@ async fn shared_object_transaction() {
 /// Same as `shared_object_transaction` but every authorities submit the transaction.
 #[sim_test]
 async fn many_shared_object_transactions() {
-    let mut objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
+    let shared_object = Object::shared_for_testing();
+    let mut objects = gas_objects.clone();
     objects.push(Object::shared_for_testing());
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(objects, &configs).await;
+    let (configs, _objects) = test_authority_configs_with_objects(objects);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Make a test shared object certificate.
-    let transaction = test_shared_object_transactions().pop().unwrap();
+    let transaction = test_shared_object_transactions(Some(shared_object), Some(gas_objects))
+        .pop()
+        .unwrap();
 
     // Submit the transaction. Note that this transaction is random and we do not expect
     // it to be successfully executed by the Move execution engine.
@@ -69,12 +77,12 @@ async fn many_shared_object_transactions() {
 /// but tests the end-to-end flow from Sui to consensus.
 #[sim_test]
 async fn call_shared_object_contract() {
-    let mut gas_objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(gas_objects.clone(), &configs).await;
+    let (configs, mut gas_objects) = test_authority_configs_with_objects(gas_objects);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Publish the move package to all authorities and get its package ID.
     let package_id = publish_counter_package(gas_objects.pop().unwrap(), &configs.validator_set())
@@ -292,12 +300,12 @@ async fn access_clock_object_test() {
 #[sim_test]
 async fn shared_object_flood() {
     telemetry_subscribers::init_for_testing();
-    let mut gas_objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(gas_objects.clone(), &configs).await;
+    let (configs, mut gas_objects) = test_authority_configs_with_objects(gas_objects);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Publish the move package to all authorities and get its package ID.
     let package_id = publish_counter_package(gas_objects.pop().unwrap(), &configs.validator_set())
@@ -370,12 +378,12 @@ async fn shared_object_flood() {
 #[sim_test]
 async fn shared_object_sync() {
     telemetry_subscribers::init_for_testing();
-    let mut gas_objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(gas_objects.clone(), &configs).await;
+    let (configs, mut gas_objects) = test_authority_configs_with_objects(gas_objects);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Publish the move package to all authorities and get its package ID.
     let package_id = publish_counter_package(gas_objects.pop().unwrap(), &configs.validator_set())
@@ -468,12 +476,12 @@ async fn shared_object_sync() {
 /// Send a simple shared object transaction to Sui and ensures the client gets back a response.
 #[sim_test]
 async fn replay_shared_object_transaction() {
-    let mut gas_objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let _handles = spawn_test_authorities(gas_objects.clone(), &configs).await;
+    let (configs, mut gas_objects) = test_authority_configs_with_objects(gas_objects);
+    let _handles = spawn_test_authorities(&configs).await;
 
     // Publish the move package to all authorities and get its package ID
     let package_id = publish_counter_package(gas_objects.pop().unwrap(), &configs.validator_set())

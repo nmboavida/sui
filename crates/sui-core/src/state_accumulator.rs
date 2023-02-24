@@ -8,7 +8,9 @@ use sui_types::storage::ObjectKey;
 use tracing::debug;
 use typed_store::Map;
 
+use std::collections::HashSet;
 use std::sync::Arc;
+use tracing::error;
 
 use fastcrypto::hash::MultisetHash;
 use sui_types::accumulator::Accumulator;
@@ -41,6 +43,8 @@ impl StateAccumulator {
         if let Some(acc) = epoch_store.get_state_hash_for_checkpoint(&checkpoint_seq_num)? {
             return Ok(acc);
         }
+        // TODO(william)
+        error!("TESTING -- calling accumulate_checkpoint {checkpoint_seq_num}");
 
         let mut acc = Accumulator::default();
 
@@ -49,38 +53,55 @@ impl StateAccumulator {
             effects
                 .iter()
                 .flat_map(|fx| {
-                    fx.created
-                        .clone()
-                        .into_iter()
+                    fx.created()
+                        .iter()
                         .map(|(oref, _)| oref.2)
-                        .chain(fx.unwrapped.clone().into_iter().map(|(oref, _)| oref.2))
-                        .chain(fx.mutated.clone().into_iter().map(|(oref, _)| oref.2))
+                        .chain(fx.unwrapped().iter().map(|(oref, _)| oref.2))
+                        .chain(fx.mutated().iter().map(|(oref, _)| oref.2))
                         .collect::<Vec<ObjectDigest>>()
                 })
                 .collect::<Vec<ObjectDigest>>(),
         );
 
+        // TODO(william)
+        let insertions = effects
+            .iter()
+            .flat_map(|fx| {
+                fx.created()
+                    .iter()
+                    .map(|(oref, _)| oref.2)
+                    .chain(fx.unwrapped().iter().map(|(oref, _)| oref.2))
+                    .chain(fx.mutated().iter().map(|(oref, _)| oref.2))
+                    .collect::<Vec<ObjectDigest>>()
+            })
+            .collect::<Vec<ObjectDigest>>();
+        error!("TESTING -- num insertions: {}", insertions.len());
+        error!("TESTING -- digests inserted: {:?}", insertions);
+
         // get all modified_at_versions for the fx
         let modified_at_version_keys = effects
             .iter()
             .flat_map(|fx| {
-                fx.modified_at_versions
+                fx.modified_at_versions()
                     .clone()
                     .into_iter()
-                    .map(|(id, seq_num)| ObjectKey(id, seq_num))
+                    .map(|(id, seq_num)| ObjectKey(*id, *seq_num))
                     .collect::<Vec<ObjectKey>>()
             })
-            .collect::<Vec<ObjectKey>>();
+            .collect::<HashSet<ObjectKey>>();
 
         let modified_at_digests = self
             .authority_store
             .perpetual_tables
-            .objects
-            .multi_get(modified_at_version_keys)?
+            .parent_sync
             .iter()
-            // TODO(william) try to avoid hashing every object here by adding digest
-            // to modified_at_version itself
-            .map(|obj| obj.clone().expect("Object not found").digest())
+            .filter_map(|(tup, _tx_digest)| {
+                if modified_at_version_keys.contains(&ObjectKey(tup.0, tup.1)) {
+                    Some(tup.2)
+                } else {
+                    None
+                }
+            })
             .collect::<Vec<ObjectDigest>>();
 
         // process removals from the set
@@ -88,19 +109,39 @@ impl StateAccumulator {
             effects
                 .iter()
                 .flat_map(|fx| {
-                    fx.deleted
+                    fx.deleted()
                         .clone()
                         .into_iter()
                         .map(|oref| oref.2)
-                        .chain(fx.wrapped.clone().into_iter().map(|oref| oref.2))
+                        .chain(fx.wrapped().iter().map(|oref| oref.2))
                         .chain(modified_at_digests.clone().into_iter())
                         .collect::<Vec<ObjectDigest>>()
                 })
                 .collect::<Vec<ObjectDigest>>(),
         );
 
+        // TODO(william)
+        let deletions = effects
+            .iter()
+            .flat_map(|fx| {
+                fx.deleted()
+                    .iter()
+                    .map(|oref| oref.2)
+                    .chain(fx.wrapped().iter().map(|oref| oref.2))
+                    .chain(modified_at_digests.iter().cloned())
+                    .collect::<Vec<ObjectDigest>>()
+            })
+            .collect::<Vec<ObjectDigest>>();
+        error!("TESTING -- num deletions: {}", deletions.len());
+        error!("TESTING -- digests deleted: {:?}", deletions);
+        error!(
+            "TESTING -- modified_at keys: {:?}, digests: {:?}",
+            modified_at_version_keys, modified_at_digests
+        );
+
         epoch_store.insert_state_hash_for_checkpoint(&checkpoint_seq_num, &acc)?;
         debug!("Accumulated checkpoint {}", checkpoint_seq_num);
+        error!("TESTING -- Accumulated checkpoint {}", checkpoint_seq_num);
 
         epoch_store
             .checkpoint_state_notify_read
@@ -153,14 +194,29 @@ impl StateAccumulator {
             epoch, next_to_accumulate, last_checkpoint_of_epoch
         );
 
+        // TODO(william)
+        error!("TESTING -- Next to accumulate: {next_to_accumulate}");
+        error!("TESTING -- Last to accumulate: {last_checkpoint_of_epoch}");
+
         let (checkpoints, mut accumulators) = epoch_store
             .get_accumulators_in_checkpoint_range(next_to_accumulate, last_checkpoint_of_epoch)?
             .into_iter()
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
+        error!(
+            "TESTING -- Num checkpoints already accumulated and fetched: {}",
+            checkpoints.len()
+        );
+
         let remaining_checkpoints: Vec<_> = (next_to_accumulate..=last_checkpoint_of_epoch)
             .filter(|seq_num| !checkpoints.contains(seq_num))
             .collect();
+
+        // TODO(william)
+        error!(
+            "TESTING -- Num checkpoints to await: {}",
+            remaining_checkpoints.len()
+        );
 
         if !remaining_checkpoints.is_empty() {
             debug!(
@@ -175,6 +231,12 @@ impl StateAccumulator {
             .expect("Failed to notify read checkpoint state digests");
 
         accumulators.append(&mut remaining_accumulators);
+
+        error!(
+            "TESTING -- Num checkpoints after await: {}",
+            accumulators.len()
+        );
+
         assert!(accumulators.len() == (last_checkpoint_of_epoch - next_to_accumulate + 1) as usize);
 
         for acc in accumulators {
@@ -190,7 +252,7 @@ impl StateAccumulator {
             .root_state_notify_read
             .notify(epoch, &(last_checkpoint_of_epoch, root_state_hash.clone()));
 
-        debug!("Accumulated epoch {}", epoch);
+        error!("TESTING -- Root state hash: {:?}", root_state_hash.digest());
         Ok(root_state_hash)
     }
 
