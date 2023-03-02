@@ -5,8 +5,9 @@ use futures::future::join_all;
 use move_core_types::ident_str;
 use mysten_metrics::RegistryService;
 use prometheus::Registry;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
+use sui_config::{NodeConfig, ValidatorInfo};
 use sui_core::authority_aggregator::{AuthAggMetrics, AuthorityAggregator};
 use sui_core::consensus_adapter::position_submit_certificate;
 use sui_core::safe_client::SafeClientMetricsBase;
@@ -14,13 +15,14 @@ use sui_core::signature_verifier::DefaultSignatureVerifier;
 use sui_core::test_utils::make_transfer_sui_transaction;
 use sui_macros::sim_test;
 use sui_node::SuiNodeHandle;
+use sui_types::base_types::SuiAddress;
 use sui_types::crypto::ToFromBytes;
 use sui_types::crypto::{generate_proof_of_possession, get_account_key_pair};
 use sui_types::gas::GasCostSummary;
 use sui_types::message_envelope::Message;
 use sui_types::messages::{
-    CallArg, CertifiedTransactionEffects, ObjectArg, TransactionData, TransactionEffectsAPI,
-    VerifiedTransaction,
+    CallArg, CertifiedTransactionEffects, ExecutionStatus, ObjectArg, TransactionData,
+    TransactionEffectsAPI, VerifiedTransaction,
 };
 use sui_types::object::Object;
 use sui_types::utils::to_sender_signed_transaction;
@@ -315,7 +317,6 @@ async fn test_validator_resign_effects() {
     assert_eq!(effects0.into_message(), effects1.into_message());
 }
 
-// TODO: This test is currently flaky. Need to re-enable it once we fix the issue.
 #[sim_test]
 async fn test_reconfig_with_committee_change_basic() {
     // This test exercise the full flow of a validator joining the network, catch up and then leave.
@@ -360,47 +361,8 @@ async fn test_reconfig_with_committee_change_basic() {
     let mut authorities =
         spawn_test_authorities([gas.clone(), stake.clone()].into_iter(), &init_configs).await;
 
-    let proof_of_possession =
-        generate_proof_of_possession(new_node_config.protocol_key_pair(), sender);
-
-    let tx_data = TransactionData::new_move_call_with_dummy_gas_price(
-        sender,
-        SUI_FRAMEWORK_OBJECT_ID,
-        ident_str!("sui_system").to_owned(),
-        ident_str!("request_add_validator").to_owned(),
-        vec![],
-        gas.compute_object_reference(),
-        vec![
-            CallArg::Object(ObjectArg::SharedObject {
-                id: SUI_SYSTEM_STATE_OBJECT_ID,
-                initial_shared_version: SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
-                mutable: true,
-            }),
-            CallArg::Pure(
-                bcs::to_bytes(&new_validator.protocol_key().as_bytes().to_vec()).unwrap(),
-            ),
-            CallArg::Pure(bcs::to_bytes(new_validator.network_key().as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes(new_validator.worker_key().as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes(proof_of_possession.as_ref()).unwrap()),
-            CallArg::Pure(bcs::to_bytes("name".as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes("description".as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes("image_url".as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes("project_url".as_bytes()).unwrap()),
-            CallArg::Pure(bcs::to_bytes(&new_validator.network_address().to_vec()).unwrap()),
-            CallArg::Pure(bcs::to_bytes(&new_validator.p2p_address().to_vec()).unwrap()),
-            CallArg::Pure(
-                bcs::to_bytes(&new_validator.narwhal_primary_address().to_vec()).unwrap(),
-            ),
-            CallArg::Pure(bcs::to_bytes(&new_validator.narwhal_worker_address().to_vec()).unwrap()),
-            CallArg::Object(ObjectArg::ImmOrOwnedObject(
-                stake.compute_object_reference(),
-            )),
-            CallArg::Pure(bcs::to_bytes(&1u64).unwrap()), // gas_price
-            CallArg::Pure(bcs::to_bytes(&0u64).unwrap()), // commission_rate
-        ],
-        10000,
-    );
-    let transaction = to_sender_signed_transaction(tx_data, new_node_config.account_key_pair());
+    let transaction =
+        create_join_committee_tx(&gas, &stake, &new_validator, new_node_config, sender);
     let effects = execute_transaction(&authorities, transaction)
         .await
         .unwrap();
@@ -452,21 +414,7 @@ async fn test_reconfig_with_committee_change_basic() {
     });
 
     let gas = authorities[0].with(|node| node.state().db().get_object(&gas.id()).unwrap().unwrap());
-    let tx_data = TransactionData::new_move_call_with_dummy_gas_price(
-        sender,
-        SUI_FRAMEWORK_OBJECT_ID,
-        ident_str!("sui_system").to_owned(),
-        ident_str!("request_remove_validator").to_owned(),
-        vec![],
-        gas.compute_object_reference(),
-        vec![CallArg::Object(ObjectArg::SharedObject {
-            id: SUI_SYSTEM_STATE_OBJECT_ID,
-            initial_shared_version: SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
-            mutable: true,
-        })],
-        10000,
-    );
-    let transaction = to_sender_signed_transaction(tx_data, new_node_config.account_key_pair());
+    let transaction = create_leave_committee_tx(&gas, sender, new_node_config);
     let effects = execute_transaction(&authorities, transaction)
         .await
         .unwrap();
@@ -488,6 +436,283 @@ async fn test_reconfig_with_committee_change_basic() {
             .state()
             .is_fullnode(&node.state().epoch_store_for_testing()));
     })
+}
+
+#[sim_test]
+async fn test_reconfig_with_committee_change_stress() {
+    // Network config composed of the join of all committees that will
+    // exist at any point during this test. Each NetworkConfig epoch committee
+    // will be a subset of this
+    let validator_superset = test_and_configure_authority_configs(9);
+
+    // This needs to be written to genesis for all validators, present and future
+    // (either that or we create these objects via Transaction later, but that's more work)
+    let object_set: HashMap<_, _> = validator_superset
+        .validator_configs()
+        .iter()
+        .map(|config| {
+            let sender = config.sui_address();
+            let gas = Object::with_owner_for_testing(sender);
+            let stake = Object::with_owner_for_testing(sender);
+            (sender, (gas, stake))
+        })
+        .collect();
+    let flattened_object_set: Vec<_> = object_set
+        .values()
+        .flat_map(|(g, s)| vec![g.clone(), s.clone()])
+        .collect();
+
+    // initial committee
+    let current_network_config = test_and_configure_authority_configs(7);
+
+    let mut authorities =
+        spawn_test_authorities(flattened_object_set.clone(), &current_network_config).await;
+
+    let public_keys: HashSet<_> = current_network_config
+        .validator_set()
+        .into_iter()
+        .map(|v| v.protocol_key())
+        .collect();
+
+    let mut current_set: Vec<_> = current_network_config
+        .validator_set()
+        .into_iter()
+        .map(|v| {
+            let node_config = current_network_config
+                .validator_configs()
+                .iter()
+                .find(|c| c.protocol_public_key() == v.protocol_key())
+                .unwrap();
+            (v, node_config)
+        })
+        .collect();
+    assert_eq!(current_set.len(), 7);
+
+    let other_validators: Vec<_> = validator_superset
+        .validator_set()
+        .into_iter()
+        .filter(|v| !public_keys.contains(&v.protocol_key()))
+        .collect();
+    let mut standby_set: Vec<_> = other_validators
+        .clone()
+        .into_iter()
+        .map(|v| {
+            let node_config = validator_superset
+                .validator_configs()
+                .iter()
+                .find(|c| c.protocol_public_key() == v.protocol_key())
+                .unwrap();
+            (v, node_config)
+        })
+        .collect();
+    assert_eq!(standby_set.len(), 2);
+
+    // circulate the committee 3 times (i.e. 3 epochs). By the end, we will have cycled through
+    // nearly the full validator set
+    for _ in 0..3 {
+        // Add first 2 validators from standby_set to committee (and add to end of current_set).
+        // Remove first 2 validators from committee (and beginning of current_set) and add to end of standby_set.
+        // This effectively creates a circular buffer of two different leaving and joining
+        // validators per epoch
+
+        // adding new validators
+        let joining_validators: Vec<_> = standby_set.drain(..2).collect();
+        for (val, node_config) in joining_validators.clone() {
+            let sender = node_config.sui_address();
+            let (gas, stake) = object_set.get(&sender).unwrap();
+            let transaction = create_join_committee_tx(gas, stake, &val, node_config, sender);
+            let effects = execute_transaction(&authorities, transaction)
+                .await
+                .unwrap();
+
+            // TODO(william)
+            if let ExecutionStatus::Failure {
+                error: e,
+                command: c,
+            } = effects.status.clone()
+            {
+                panic!("Transaction unsuccessful: {:?}, {:?}", e, c);
+            } else {
+                info!("Add validator tx successful");
+            }
+            // assert!(effects.status.is_ok());
+
+            // update our working set for validation after reconfig
+            current_set.push((val.clone(), node_config));
+        }
+
+        // removing old validators
+        let leaving_validators: Vec<_> = current_set.drain(..2).collect();
+        for (val, node_config) in &leaving_validators {
+            let sender = node_config.sui_address();
+            let (gas, _stake) = object_set.get(&sender).unwrap();
+            let transaction = create_leave_committee_tx(gas, sender, node_config);
+            let effects = execute_transaction(&authorities, transaction)
+                .await
+                .unwrap();
+            assert!(effects.status.is_ok());
+
+            // update our standby set for validation after reconfig
+            standby_set.push((val.clone(), node_config));
+        }
+
+        trigger_reconfiguration(&authorities).await;
+
+        // Check that a new validator has joined the committee.
+        assert_eq!(current_set.len(), 7);
+        authorities[0].with(|node| {
+            assert_eq!(
+                node.state()
+                    .epoch_store_for_testing()
+                    .committee()
+                    .num_members(),
+                7
+            );
+            for (val, _) in current_set.iter() {
+                assert!(node
+                    .state()
+                    .epoch_store_for_testing()
+                    .committee()
+                    .authority_exists(&val.protocol_key()));
+            }
+        });
+
+        // Start new nodes as validators and allow time to catch up
+        let mut new_handles: Vec<_> = vec![];
+        for (_val, node_config) in joining_validators.clone() {
+            let mut node_config_clone = node_config.clone();
+            // Make sure that the new validator config shares the same genesis as the initial one.
+            node_config_clone.genesis = current_network_config.validator_configs[0].genesis.clone();
+            let handle =
+                start_node(&node_config_clone, RegistryService::new(Registry::new())).await;
+            // We have to manually insert the genesis objects since the test utility doesn't.
+            handle
+                .with_async(|node| async {
+                    for obj in flattened_object_set.clone() {
+                        node.state().insert_genesis_object(obj.clone()).await;
+                    }
+                    // When the node started, it's not part of the committee, and hence a fullnode.
+                    assert!(node
+                        .state()
+                        .is_fullnode(&node.state().epoch_store_for_testing()));
+                })
+                .await;
+            new_handles.push(handle);
+        }
+
+        // Give the new validator enough time to catch up and sync.
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        for handle in new_handles {
+            handle.with(|node| {
+                let latest_checkpoint = node
+                    .state()
+                    .get_latest_checkpoint_sequence_number()
+                    .unwrap();
+                // Eventually the validator will catch up to the new epoch and become part of the committee.
+                assert!(latest_checkpoint > 10);
+                assert!(node
+                    .state()
+                    .is_validator(&node.state().epoch_store_for_testing()));
+            });
+            authorities.push(handle);
+        }
+
+        let left_validator_pubkeys = leaving_validators
+            .iter()
+            .map(|(val, _)| val.protocol_key())
+            .collect::<Vec<_>>();
+
+        let (authorities, removed_authorities): (Vec<_>, Vec<_>) =
+            authorities.iter().partition(|authority| {
+                authority.with(|node| left_validator_pubkeys.contains(&node.state().name))
+            });
+
+        // Check that this validator has left the committee, and is no longer a validator.
+        assert_eq!(authorities.len(), 7);
+        for r in removed_authorities.iter() {
+            assert!(r.with(|node| node
+                .state()
+                .is_fullnode(&node.state().epoch_store_for_testing())));
+        }
+
+        // check new committee size
+        authorities[0].with(|node| {
+            assert_eq!(
+                node.state()
+                    .epoch_store_for_testing()
+                    .committee()
+                    .num_members(),
+                7
+            )
+        });
+    }
+}
+
+fn create_join_committee_tx(
+    gas: &Object,
+    stake: &Object,
+    val: &ValidatorInfo,
+    node_config: &NodeConfig,
+    sender: SuiAddress,
+) -> VerifiedTransaction {
+    let proof_of_possession = generate_proof_of_possession(node_config.protocol_key_pair(), sender);
+    let tx_data = TransactionData::new_move_call_with_dummy_gas_price(
+        sender,
+        SUI_FRAMEWORK_OBJECT_ID,
+        ident_str!("sui_system").to_owned(),
+        ident_str!("request_add_validator").to_owned(),
+        vec![],
+        gas.compute_object_reference(),
+        vec![
+            CallArg::Object(ObjectArg::SharedObject {
+                id: SUI_SYSTEM_STATE_OBJECT_ID,
+                initial_shared_version: SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
+                mutable: true,
+            }),
+            CallArg::Pure(bcs::to_bytes(&val.protocol_key().as_bytes().to_vec()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(val.network_key().as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(val.worker_key().as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(proof_of_possession.as_ref()).unwrap()),
+            CallArg::Pure(bcs::to_bytes("name".as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes("description".as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes("image_url".as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes("project_url".as_bytes()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(&val.network_address().to_vec()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(&val.p2p_address().to_vec()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(&val.narwhal_primary_address().to_vec()).unwrap()),
+            CallArg::Pure(bcs::to_bytes(&val.narwhal_worker_address().to_vec()).unwrap()),
+            CallArg::Object(ObjectArg::ImmOrOwnedObject(
+                stake.compute_object_reference(),
+            )),
+            CallArg::Pure(bcs::to_bytes(&1u64).unwrap()), // gas_price
+            CallArg::Pure(bcs::to_bytes(&0u64).unwrap()), // commission_rate
+        ],
+        10000,
+    );
+    to_sender_signed_transaction(tx_data, node_config.account_key_pair())
+}
+
+fn create_leave_committee_tx(
+    gas: &Object,
+    sender: SuiAddress,
+    node_config: &NodeConfig,
+) -> VerifiedTransaction {
+    let tx_data = TransactionData::new_move_call_with_dummy_gas_price(
+        sender,
+        SUI_FRAMEWORK_OBJECT_ID,
+        ident_str!("sui_system").to_owned(),
+        ident_str!("request_remove_validator").to_owned(),
+        vec![],
+        gas.compute_object_reference(),
+        vec![CallArg::Object(ObjectArg::SharedObject {
+            id: SUI_SYSTEM_STATE_OBJECT_ID,
+            initial_shared_version: SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
+            mutable: true,
+        })],
+        10000,
+    );
+    to_sender_signed_transaction(tx_data, node_config.account_key_pair())
 }
 
 async fn trigger_reconfiguration(authorities: &[SuiNodeHandle]) {
