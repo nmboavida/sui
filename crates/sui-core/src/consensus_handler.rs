@@ -8,6 +8,7 @@ use crate::authority::AuthorityMetrics;
 use crate::checkpoints::CheckpointService;
 use crate::transaction_manager::TransactionManager;
 use async_trait::async_trait;
+use dashmap::DashMap;
 use mysten_metrics::monitored_scope;
 use narwhal_executor::{ExecutionIndices, ExecutionState};
 use narwhal_types::ConsensusOutput;
@@ -23,6 +24,7 @@ use sui_types::messages::{
 use sui_types::storage::ParentSync;
 use tracing::{debug, error, instrument};
 
+#[allow(dead_code)]
 pub struct ConsensusHandler<T> {
     /// A store created for each epoch. ConsensusHandler is recreated each epoch, with the
     /// corresponding store. This store is also used to get the current epoch ID.
@@ -33,6 +35,8 @@ pub struct ConsensusHandler<T> {
     transaction_manager: Arc<TransactionManager>,
     /// parent_sync_store is needed when determining the next version to assign for shared objects.
     parent_sync_store: T,
+    /// Reputation scores used by consensus adapter that we update, forwarded from consensus
+    scores_per_authority: Arc<DashMap<AuthorityName, u64>>,
     // TODO: ConsensusHandler doesn't really share metrics with AuthorityState. We could define
     // a new metrics type here if we want to.
     metrics: Arc<AuthorityMetrics>,
@@ -44,6 +48,7 @@ impl<T> ConsensusHandler<T> {
         checkpoint_service: Arc<CheckpointService>,
         transaction_manager: Arc<TransactionManager>,
         parent_sync_store: T,
+        scores_per_authority: Arc<DashMap<AuthorityName, u64>>,
         metrics: Arc<AuthorityMetrics>,
     ) -> Self {
         let last_seen = Mutex::new(Default::default());
@@ -53,6 +58,7 @@ impl<T> ConsensusHandler<T> {
             checkpoint_service,
             transaction_manager,
             parent_sync_store,
+            scores_per_authority,
             metrics,
         }
     }

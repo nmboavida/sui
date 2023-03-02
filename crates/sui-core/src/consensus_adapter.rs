@@ -176,6 +176,8 @@ pub struct ConsensusAdapter {
     num_inflight_transactions: AtomicU64,
     /// A structure to check the connection statuses populated by the Connection Monitor Listener
     connection_monitor_status: Box<Arc<dyn CheckConnection>>,
+    /// A structure to check the reputation scores populated by Consensus
+    pub reputation_score_status: Box<dyn CheckReputationScore>,
     /// A structure to register metrics
     opt_metrics: OptArcConsensusAdapterMetrics,
 }
@@ -189,6 +191,12 @@ pub trait CheckConnection: Send + Sync {
     fn update_mapping_for_epoch(&self, authority_names_to_peer_ids: HashMap<AuthorityName, PeerId>);
 }
 
+pub trait CheckReputationScore: Send + Sync {
+    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName>;
+
+    fn update_mapping_for_epoch(&self, scores_per_authority: Arc<DashMap<AuthorityName, u64>>);
+}
+
 pub struct ConnectionMonitorStatus {
     /// Current connection statuses forwarded from the connection monitor
     pub connection_statuses: Arc<DashMap<PeerId, ConnectionStatus>>,
@@ -198,12 +206,20 @@ pub struct ConnectionMonitorStatus {
 
 pub struct ConnectionMonitorStatusForTests {}
 
+pub struct ReputationScoreStatus {
+    /// Current reputation scores for the authorities forwarded from consensus
+    pub scores_per_authority: ArcSwap<Arc<DashMap<AuthorityName, u64>>>,
+}
+
+pub struct ReputationScoreStatusForTests {}
+
 impl ConsensusAdapter {
     /// Make a new Consensus adapter instance.
     pub fn new(
         consensus_client: Box<dyn SubmitToConsensus>,
         authority: AuthorityName,
         connection_monitor_status: Box<Arc<dyn CheckConnection>>,
+        reputation_score_status: Box<dyn CheckReputationScore>,
         opt_metrics: OptArcConsensusAdapterMetrics,
     ) -> Arc<Self> {
         let num_inflight_transactions = Default::default();
@@ -212,6 +228,7 @@ impl ConsensusAdapter {
             authority,
             num_inflight_transactions,
             connection_monitor_status,
+            reputation_score_status,
             opt_metrics,
         })
     }
@@ -565,6 +582,24 @@ impl CheckConnection for ConnectionMonitorStatusForTests {
         _authority_names_to_peer_ids: HashMap<AuthorityName, PeerId>,
     ) {
     }
+}
+
+impl CheckReputationScore for ReputationScoreStatus {
+    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName> {
+        todo!()
+    }
+
+    fn update_mapping_for_epoch(&self, new_mapping: Arc<DashMap<AuthorityName, u64>>) {
+        self.scores_per_authority.swap(Arc::from(new_mapping));
+    }
+}
+
+impl CheckReputationScore for ReputationScoreStatusForTests {
+    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName> {
+        vec![]
+    }
+
+    fn update_mapping_for_epoch(&self, _scores_per_authority: Arc<DashMap<AuthorityName, u64>>) {}
 }
 
 pub fn get_position_in_list(
