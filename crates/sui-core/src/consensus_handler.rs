@@ -11,12 +11,14 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use mysten_metrics::monitored_scope;
 use narwhal_executor::{ExecutionIndices, ExecutionState};
-use narwhal_types::ConsensusOutput;
+use narwhal_types::{ConsensusOutput, ReputationScores};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use sui_types::base_types::{AuthorityName, EpochId, TransactionDigest};
+use sui_types::crypto::PublicKey;
 use sui_types::messages::{
     ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind,
     VerifiedExecutableTransaction, VerifiedTransaction,
@@ -36,7 +38,7 @@ pub struct ConsensusHandler<T> {
     /// parent_sync_store is needed when determining the next version to assign for shared objects.
     parent_sync_store: T,
     /// Reputation scores used by consensus adapter that we update, forwarded from consensus
-    scores_per_authority: Arc<DashMap<AuthorityName, u64>>,
+    low_scoring_authorities: Arc<DashMap<AuthorityName, u64>>,
     // TODO: ConsensusHandler doesn't really share metrics with AuthorityState. We could define
     // a new metrics type here if we want to.
     metrics: Arc<AuthorityMetrics>,
@@ -58,9 +60,18 @@ impl<T> ConsensusHandler<T> {
             checkpoint_service,
             transaction_manager,
             parent_sync_store,
-            scores_per_authority,
+            low_scoring_authorities: scores_per_authority,
             metrics,
         }
+    }
+
+    /// Updates list of authorities that are deemed to have low reputation scores by consensus
+    /// these may be lagging behind the network, byzantine, or not reliably participating for any reason.
+    /// We want to ensure that the remaining set of validators once we exclude the low scoring authorities
+    /// is including enough stake for a quorum, at the very least. It is also possible that no authorities
+    /// are particularly low scoring, in which case this will result in storing an empty list.
+    fn update_low_scoring_authorities(&self, _reputation_scores: HashMap<PublicKey, u64>) {
+        todo!();
     }
 }
 
@@ -121,17 +132,13 @@ impl<T: ParentSync + Send + Sync> ExecutionState for ConsensusHandler<T> {
         ));
 
         if consensus_output.sub_dag.reputation_score.final_of_schedule {
-            // save the scores for use in the consensus adapter
-            for (authority, score) in consensus_output
-                .sub_dag
-                .reputation_score
-                .scores_per_authority
-                .clone()
-                .iter()
-            {
-                self.scores_per_authority
-                    .insert(AuthorityName::from(authority), *score);
-            }
+            self.update_low_scoring_authorities(
+                consensus_output
+                    .sub_dag
+                    .reputation_score
+                    .scores_per_authority
+                    .clone(),
+            );
         }
 
         for (cert, batches) in consensus_output.batches {

@@ -166,7 +166,6 @@ impl SubmitToConsensus for TransactionsClient<sui_network::tonic::transport::Cha
 }
 
 /// Submit Sui certificates to the consensus.
-#[allow(unused)]
 pub struct ConsensusAdapter {
     /// The network client connecting to the consensus node of this authority.
     consensus_client: Box<dyn SubmitToConsensus>,
@@ -177,7 +176,7 @@ pub struct ConsensusAdapter {
     /// A structure to check the connection statuses populated by the Connection Monitor Listener
     connection_monitor_status: Box<Arc<dyn CheckConnection>>,
     /// A structure to check the reputation scores populated by Consensus
-    pub reputation_score_status: Box<dyn CheckReputationScore>,
+    low_scoring_authorities: ArcSwap<Arc<DashMap<AuthorityName, u64>>>,
     /// A structure to register metrics
     opt_metrics: OptArcConsensusAdapterMetrics,
 }
@@ -192,9 +191,9 @@ pub trait CheckConnection: Send + Sync {
 }
 
 pub trait CheckReputationScore: Send + Sync {
-    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName>;
+    fn get_low_scoring_authorities(&self) -> DashMap<AuthorityName, u64>;
 
-    fn update_mapping_for_epoch(&self, scores_per_authority: Arc<DashMap<AuthorityName, u64>>);
+    fn update_mapping_for_epoch(&self, low_scoring_authorities: Arc<DashMap<AuthorityName, u64>>);
 }
 
 pub struct ConnectionMonitorStatus {
@@ -206,31 +205,33 @@ pub struct ConnectionMonitorStatus {
 
 pub struct ConnectionMonitorStatusForTests {}
 
-pub struct ReputationScoreStatus {
-    /// Current reputation scores for the authorities forwarded from consensus
-    pub scores_per_authority: ArcSwap<Arc<DashMap<AuthorityName, u64>>>,
-}
-
-pub struct ReputationScoreStatusForTests {}
-
 impl ConsensusAdapter {
     /// Make a new Consensus adapter instance.
     pub fn new(
         consensus_client: Box<dyn SubmitToConsensus>,
         authority: AuthorityName,
         connection_monitor_status: Box<Arc<dyn CheckConnection>>,
-        reputation_score_status: Box<dyn CheckReputationScore>,
         opt_metrics: OptArcConsensusAdapterMetrics,
     ) -> Arc<Self> {
         let num_inflight_transactions = Default::default();
+        let low_scoring_authorities: ArcSwap<Arc<DashMap<AuthorityName, u64>>> =
+            ArcSwap::from_pointee(Arc::new(DashMap::new()));
         Arc::new(Self {
             consensus_client,
             authority,
             num_inflight_transactions,
             connection_monitor_status,
-            reputation_score_status,
+            low_scoring_authorities,
             opt_metrics,
         })
+    }
+
+    pub fn swap_low_scoring_authorities(
+        &self,
+        low_scoring_authorities: Arc<DashMap<AuthorityName, u64>>,
+    ) {
+        self.low_scoring_authorities
+            .swap(Arc::from(low_scoring_authorities));
     }
 
     // todo - this probably need to hold some kind of lock to make sure epoch does not change while we are recovering
@@ -582,24 +583,6 @@ impl CheckConnection for ConnectionMonitorStatusForTests {
         _authority_names_to_peer_ids: HashMap<AuthorityName, PeerId>,
     ) {
     }
-}
-
-impl CheckReputationScore for ReputationScoreStatus {
-    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName> {
-        todo!()
-    }
-
-    fn update_mapping_for_epoch(&self, new_mapping: Arc<DashMap<AuthorityName, u64>>) {
-        self.scores_per_authority.swap(Arc::from(new_mapping));
-    }
-}
-
-impl CheckReputationScore for ReputationScoreStatusForTests {
-    fn get_low_scoring_authorities(&self) -> Vec<AuthorityName> {
-        vec![]
-    }
-
-    fn update_mapping_for_epoch(&self, _scores_per_authority: Arc<DashMap<AuthorityName, u64>>) {}
 }
 
 pub fn get_position_in_list(
