@@ -211,6 +211,11 @@ impl CertificateFetcher {
         // Skip fetching certificates at or below the gc round.
         let gc_round = self.gc_round();
         // Skip fetching certificates that already exist locally.
+        let timer = self
+            .state
+            .metrics
+            .scan_for_written_rounds_latency
+            .start_timer();
         let mut written_rounds = BTreeMap::<PublicKey, BTreeSet<Round>>::new();
         for (origin, _) in self.committee.authorities() {
             // Initialize written_rounds for all authorities, because the handler only sends back
@@ -231,6 +236,8 @@ impl CertificateFetcher {
                 return;
             }
         };
+
+        drop(timer);
 
         self.targets.retain(|origin, target_round| {
             let last_written_round = written_rounds.get(origin).map_or(gc_round, |rounds| {
@@ -424,6 +431,7 @@ async fn process_certificates_helper(
             let sync = synchronizer.clone();
             // Use threads dedicated to computation heavy work.
             spawn_blocking(move || {
+                let _verify_scope = monitored_scope("AK-sanitize-fetched-certificate");
                 for c in &certs {
                     sync.sanitize_certificate(c)?;
                 }
