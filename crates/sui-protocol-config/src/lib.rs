@@ -141,7 +141,7 @@ pub struct ProtocolConfig {
 
     // ==== Transaction input limits ====
     /// Maximum serialized size of a transaction (in bytes).
-    max_tx_size: Option<usize>,
+    max_tx_size_bytes: Option<usize>,
 
     /// Maximum number of individual transactions in a Batch transaction.
     max_tx_in_batch: Option<u32>,
@@ -324,7 +324,7 @@ pub struct ProtocolConfig {
     /// Max size of a checkpoint in bytes.
     /// Note that this is a protocol constant and not a config as validators must have this set to
     /// the same value, otherwise they *will* fork.
-    max_checkpoint_size: Option<usize>,
+    max_checkpoint_size_bytes: Option<usize>,
 
     /// A protocol upgrade always requires 2f+1 stake to agree. We support a buffer of additional
     /// stake (as a fraction of f, expressed in basis points) that is required before an upgrade
@@ -372,8 +372,8 @@ impl ProtocolConfig {
 
 // getters
 impl ProtocolConfig {
-    pub fn max_tx_size(&self) -> usize {
-        self.max_tx_size.expect(CONSTANT_ERR_MSG)
+    pub fn max_tx_size_bytes(&self) -> usize {
+        self.max_tx_size_bytes.expect(CONSTANT_ERR_MSG)
     }
     pub fn max_tx_in_batch(&self) -> u32 {
         self.max_tx_in_batch.expect(CONSTANT_ERR_MSG)
@@ -532,8 +532,8 @@ impl ProtocolConfig {
         self.max_transactions_per_checkpoint
             .expect(CONSTANT_ERR_MSG)
     }
-    pub fn max_checkpoint_size(&self) -> usize {
-        self.max_checkpoint_size.expect(CONSTANT_ERR_MSG)
+    pub fn max_checkpoint_size_bytes(&self) -> usize {
+        self.max_checkpoint_size_bytes.expect(CONSTANT_ERR_MSG)
     }
     pub fn buffer_stake_for_protocol_upgrade_bps(&self) -> u64 {
         self.buffer_stake_for_protocol_upgrade_bps
@@ -679,7 +679,7 @@ impl ProtocolConfig {
                 // All flags are disabled in V1
                 feature_flags: Default::default(),
 
-                max_tx_size: Some(64 * 1024),
+                max_tx_size_bytes: Some(64 * 1024),
                 max_tx_in_batch: Some(10),
                 max_gas_payment_objects: Some(32),
                 max_modules_in_publish: Some(128),
@@ -729,7 +729,7 @@ impl ProtocolConfig {
                 reward_slashing_rate: Some(5000),
                 storage_gas_price: Some(1),
                 max_transactions_per_checkpoint: Some(1000),
-                max_checkpoint_size: Some(30 * 1024 * 1024),
+                max_checkpoint_size_bytes: Some(30 * 1024 * 1024),
                 // require 2f+1 + 0.75 * f stake for automatic protocol upgrades.
                 // TODO: tune based on experience in testnet
                 buffer_stake_for_protocol_upgrade_bps: Some(7500),

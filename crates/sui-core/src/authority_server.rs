@@ -253,7 +253,7 @@ impl ValidatorService {
         // Enforce overall transaction size limit.
         let tx_size = bcs::serialized_size(&transaction)
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        let max_tx_size = epoch_store.protocol_config().max_tx_size();
+        let max_tx_size = epoch_store.protocol_config().max_tx_size_bytes();
         fp_ensure!(
             tx_size <= max_tx_size,
             tonic::Status::resource_exhausted(format!(
