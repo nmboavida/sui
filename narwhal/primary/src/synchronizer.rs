@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use anemo::{Network, Request};
 use config::{Committee, Epoch, WorkerCache, WorkerId};
+use consensus::consensus::RoundUpdate;
 use consensus::dag::Dag;
 use crypto::{NetworkPublicKey, PublicKey};
 use fastcrypto::hash::Hash as _;
@@ -67,8 +68,8 @@ struct Inner {
     tx_parents: Sender<(Vec<Certificate>, Round, Epoch)>,
     /// Send own certificates to be broadcasted to all other peers.
     tx_own_certificate_broadcast: broadcast::Sender<Certificate>,
-    /// Get a signal when the commit round changes.
-    rx_consensus_round_updates: watch::Receiver<Round>,
+    /// Get a signal when the commit & gc round changes.
+    rx_consensus_round_updates: watch::Receiver<RoundUpdate>,
     /// Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
     /// The dag used for the external consensus
@@ -200,7 +201,7 @@ impl Synchronizer {
         tx_certificate_fetcher: Sender<Certificate>,
         tx_new_certificates: Sender<Certificate>,
         tx_parents: Sender<(Vec<Certificate>, Round, Epoch)>,
-        rx_consensus_round_updates: watch::Receiver<Round>,
+        rx_consensus_round_updates: watch::Receiver<RoundUpdate>,
         rx_synchronizer_network: oneshot::Receiver<Network>,
         dag: Option<Arc<Dag>>,
         metrics: Arc<PrimaryMetrics>,
@@ -209,7 +210,7 @@ impl Synchronizer {
         let genesis = Self::make_genesis(committee);
         let highest_processed_round = certificate_store.highest_round_number();
         let highest_created_certificate = certificate_store.last_round(&name).unwrap();
-        let gc_round = (*rx_consensus_round_updates.borrow()).saturating_sub(gc_depth);
+        let gc_round = rx_consensus_round_updates.borrow().gc_round;
         let (tx_own_certificate_broadcast, _rx_own_certificate_broadcast) =
             broadcast::channel(1000);
         let inner = Arc::new(Inner {
@@ -264,7 +265,7 @@ impl Synchronizer {
                     // this happens during reconfig when the other side hangs up.
                     return;
                 }
-                let gc_round = (*rx_consensus_round_updates.borrow()).saturating_sub(gc_depth);
+                let gc_round = rx_consensus_round_updates.borrow().gc_round;
                 let Some(inner) = weak_inner.upgrade() else {
                     // this happens if Narwhal is shutting down.
                     return;
@@ -717,7 +718,7 @@ impl Synchronizer {
         // Clone the round updates channel so we can get update notifications specific to
         // this RPC handler.
         let mut rx_consensus_round_updates = inner.rx_consensus_round_updates.clone();
-        let mut consensus_round = *rx_consensus_round_updates.borrow();
+        let mut consensus_round = rx_consensus_round_updates.borrow().committed_round;
         ensure!(
             header.round >= consensus_round.saturating_sub(max_age),
             DagError::TooOld(
@@ -813,7 +814,7 @@ impl Synchronizer {
                 // problematic, this function could be augmented to also support cancellation based
                 // on narwhal round.
                 Ok(()) = rx_consensus_round_updates.changed() => {
-                    consensus_round = *rx_consensus_round_updates.borrow();
+                    consensus_round = rx_consensus_round_updates.borrow().committed_round;
                     ensure!(
                         header.round >= consensus_round.saturating_sub(max_age),
                         DagError::TooOld(
