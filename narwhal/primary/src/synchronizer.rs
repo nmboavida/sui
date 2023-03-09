@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use anemo::{Network, Request};
 use config::{Committee, Epoch, WorkerCache, WorkerId};
-use consensus::consensus::RoundUpdate;
+use consensus::consensus::CommittedRound;
 use consensus::dag::Dag;
 use crypto::{NetworkPublicKey, PublicKey};
 use fastcrypto::hash::Hash as _;
@@ -69,7 +69,7 @@ struct Inner {
     /// Send own certificates to be broadcasted to all other peers.
     tx_own_certificate_broadcast: broadcast::Sender<Certificate>,
     /// Get a signal when the commit & gc round changes.
-    rx_consensus_round_updates: watch::Receiver<RoundUpdate>,
+    rx_consensus_round_updates: watch::Receiver<CommittedRound>,
     /// Genesis digests and contents.
     genesis: HashMap<CertificateDigest, Certificate>,
     /// The dag used for the external consensus
@@ -201,7 +201,7 @@ impl Synchronizer {
         tx_certificate_fetcher: Sender<Certificate>,
         tx_new_certificates: Sender<Certificate>,
         tx_parents: Sender<(Vec<Certificate>, Round, Epoch)>,
-        rx_consensus_round_updates: watch::Receiver<RoundUpdate>,
+        rx_consensus_round_updates: watch::Receiver<CommittedRound>,
         rx_synchronizer_network: oneshot::Receiver<Network>,
         dag: Option<Arc<Dag>>,
         metrics: Arc<PrimaryMetrics>,

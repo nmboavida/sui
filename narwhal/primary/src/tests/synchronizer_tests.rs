@@ -4,7 +4,7 @@ use crate::{
     common::create_db_stores, metrics::PrimaryMetrics, synchronizer::Synchronizer,
     NUM_SHUTDOWN_RECEIVERS,
 };
-use consensus::consensus::RoundUpdate;
+use consensus::consensus::CommittedRound;
 use consensus::utils::gc_round;
 use consensus::{dag::Dag, metrics::ConsensusMetrics};
 use fastcrypto::{hash::Hash, traits::KeyPair};
@@ -35,7 +35,7 @@ async fn accept_certificates() {
     let (tx_new_certificates, mut rx_new_certificates) = test_utils::test_channel!(3);
     let (tx_parents, mut rx_parents) = test_utils::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     // Create test stores.
@@ -134,7 +134,7 @@ async fn accept_suspended_certificates() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(100);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::new(1, 0));
+        watch::channel(CommittedRound::new(1, 0));
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     let synchronizer = Arc::new(Synchronizer::new(
@@ -221,7 +221,7 @@ async fn synchronizer_recover_basic() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(3);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     // Create test stores.
@@ -336,7 +336,7 @@ async fn synchronizer_recover_partial_certs() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(3);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(4);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     // Create test stores.
@@ -445,7 +445,7 @@ async fn synchronizer_recover_previous_round() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(6);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(10);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     // Create test stores.
@@ -555,7 +555,7 @@ async fn deliver_certificate_using_dag() {
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (_tx_consensus, rx_consensus) = test_utils::test_channel!(1);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
     let mut tx_shutdown = PreSubscribedBroadcastSender::new(NUM_SHUTDOWN_RECEIVERS);
 
@@ -631,7 +631,7 @@ async fn deliver_certificate_using_store() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(100);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     let synchronizer = Synchronizer::new(
@@ -695,7 +695,7 @@ async fn deliver_certificate_not_found_parents() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(100);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (_tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::default());
+        watch::channel(CommittedRound::default());
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     let synchronizer = Synchronizer::new(
@@ -766,7 +766,7 @@ async fn sync_batches_drops_old() {
     let (tx_new_certificates, _rx_new_certificates) = test_utils::test_channel!(100);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::new(1, 0));
+        watch::channel(CommittedRound::new(1, 0));
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     let synchronizer = Arc::new(Synchronizer::new(
@@ -812,7 +812,7 @@ async fn sync_batches_drops_old() {
 
     tokio::task::spawn(async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let _ = tx_consensus_round_updates.send(RoundUpdate::new(30, 0));
+        let _ = tx_consensus_round_updates.send(CommittedRound::new(30, 0));
     });
     match synchronizer
         .sync_batches(&test_header, network.clone(), 10)
@@ -844,7 +844,7 @@ async fn gc_suspended_certificates() {
     let (tx_new_certificates, mut rx_new_certificates) = test_utils::test_channel!(100);
     let (tx_parents, _rx_parents) = test_utils::test_channel!(100);
     let (tx_consensus_round_updates, rx_consensus_round_updates) =
-        watch::channel(RoundUpdate::new(1, 0));
+        watch::channel(CommittedRound::new(1, 0));
     let (_tx_synchronizer_network, rx_synchronizer_network) = oneshot::channel();
 
     let synchronizer = Arc::new(Synchronizer::new(
@@ -906,7 +906,7 @@ async fn gc_suspended_certificates() {
     }
 
     // At commit round 8, round 3 becomes the GC round. Round 4 and 5 will be accepted.
-    let _ = tx_consensus_round_updates.send(RoundUpdate::new(8, gc_round(8, GC_DEPTH)));
+    let _ = tx_consensus_round_updates.send(CommittedRound::new(8, gc_round(8, GC_DEPTH)));
 
     // Wait for all notifications to arrive.
     accept.collect::<Vec<()>>().await;
