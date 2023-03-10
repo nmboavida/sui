@@ -278,8 +278,7 @@ impl ConsensusAdapter {
                 const DELAY_STEP: Duration = Duration::from_secs(7);
                 const MAX_DELAY_MUL: usize = 10;
                 (
-                    // DELAY_STEP * std::cmp::min(position, MAX_DELAY_MUL) as u32,
-                    Duration::ZERO,
+                    DELAY_STEP * std::cmp::min(position, MAX_DELAY_MUL) as u32,
                     position,
                 )
             }

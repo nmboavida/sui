@@ -356,7 +356,7 @@ impl SuiNode {
             let components = Self::construct_validator_components(
                 &config,
                 state.clone(),
-                committee.clone(),
+                committee,
                 epoch_store.clone(),
                 checkpoint_store.clone(),
                 state_sync_handle.clone(),
@@ -517,7 +517,7 @@ impl SuiNode {
     async fn construct_validator_components(
         config: &NodeConfig,
         state: Arc<AuthorityState>,
-        committee: Committee,
+        committee: Arc<Committee>,
         epoch_store: Arc<AuthorityPerEpochStore>,
         checkpoint_store: Arc<CheckpointStore>,
         state_sync_handle: state_sync::Handle,
@@ -584,7 +584,7 @@ impl SuiNode {
         narwhal_manager: NarwhalManager,
         narwhal_epoch_data_remover: EpochDataRemover,
         validator_server_handle: JoinHandle<Result<()>>,
-        committee: Committee,
+        committee: Arc<Committee>,
         accumulator: Arc<StateAccumulator>,
         checkpoint_metrics: Arc<CheckpointMetrics>,
         sui_tx_validator_metrics: Arc<SuiTxValidatorMetrics>,
@@ -914,7 +914,7 @@ impl SuiNode {
                 let new_epoch_store = self
                     .reconfigure_state(
                         &cur_epoch_store,
-                        next_epoch_committee,
+                        next_epoch_committee.clone(),
                         new_epoch_start_state,
                     )
                     .await;
@@ -936,7 +936,7 @@ impl SuiNode {
                             narwhal_manager,
                             narwhal_epoch_data_remover,
                             validator_server_handle,
-                            next_epoch_committee,
+                            Arc::new(next_epoch_committee.clone()),
                             self.accumulator.clone(),
                             checkpoint_metrics,
                             sui_tx_validator_metrics,
@@ -951,7 +951,7 @@ impl SuiNode {
                 let new_epoch_store = self
                     .reconfigure_state(
                         &cur_epoch_store,
-                        next_epoch_committee,
+                        next_epoch_committee.clone(),
                         new_epoch_start_state,
                     )
                     .await;
@@ -963,7 +963,7 @@ impl SuiNode {
                         Self::construct_validator_components(
                             &self.config,
                             self.state.clone(),
-                            next_epoch_committee,
+                            Arc::new(next_epoch_committee.clone()),
                             new_epoch_store.clone(),
                             self.checkpoint_store.clone(),
                             self.state_sync.clone(),
