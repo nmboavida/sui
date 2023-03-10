@@ -89,4 +89,5 @@ WorkerSynchronizeMessage:
         TUPLEARRAY:
           CONTENT: U8
           SIZE: 96
+    - is_digests_certified: BOOL
 
