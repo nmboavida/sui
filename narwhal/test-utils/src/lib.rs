@@ -14,6 +14,8 @@ use fastcrypto::{
 };
 use indexmap::IndexMap;
 use multiaddr::Multiaddr;
+use rand::distributions::Bernoulli;
+use rand::distributions::Distribution;
 use rand::{
     rngs::{OsRng, StdRng},
     thread_rng, Rng, SeedableRng,
@@ -469,6 +471,8 @@ pub fn make_certificates_with_slow_nodes(
     keys: &[PublicKey],
     slow_nodes: &[(PublicKey, f64)],
 ) -> (VecDeque<Certificate>, Vec<Certificate>) {
+    let mut rand = StdRng::seed_from_u64(1);
+
     // ensure provided slow nodes do not account > f
     let slow_nodes_stake: Stake = slow_nodes
         .iter()
@@ -485,7 +489,7 @@ pub fn make_certificates_with_slow_nodes(
         next_parents.clear();
         for name in keys {
             let this_cert_parents =
-                this_cert_parents_with_slow_nodes(name, parents.clone(), slow_nodes);
+                this_cert_parents_with_slow_nodes(name, parents.clone(), slow_nodes, &mut rand);
             let (_, certificate) =
                 mock_certificate(committee, name.clone(), round, this_cert_parents);
             certificates.push_back(certificate.clone());
@@ -502,10 +506,11 @@ pub fn make_certificates_with_slow_nodes(
 // If probability to use it is 0.0, then the parent node will NEVER be used.
 // If probability to use it is 1.0, then the parent node will ALWAYS be used.
 // We always make sure to include our "own" certificate, thus the `name` property is needed.
-fn this_cert_parents_with_slow_nodes(
+pub fn this_cert_parents_with_slow_nodes(
     name: &PublicKey,
     ancestors: Vec<Certificate>,
     slow_nodes: &[(PublicKey, f64)],
+    rand: &mut StdRng,
 ) -> BTreeSet<CertificateDigest> {
     let mut parents = BTreeSet::new();
     for parent in ancestors {
@@ -515,11 +520,10 @@ fn this_cert_parents_with_slow_nodes(
             .iter()
             .find(|(key, _)| *key != *name && *key == parent.header.author)
         {
-            let f: f64 = thread_rng().gen_range(0_f64..1_f64);
+            let b = Bernoulli::new(*inclusion_probability).unwrap();
+            let should_include = b.sample(rand);
 
-            // if we are within the probability to include the node,
-            // then we add it as parent.
-            if f < *inclusion_probability {
+            if should_include {
                 parents.insert(parent.digest());
             }
         } else {

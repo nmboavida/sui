@@ -6,7 +6,6 @@ use super::*;
 use crate::consensus::CommittedRound;
 use crate::consensus_utils::*;
 use crate::{metrics::ConsensusMetrics, Consensus, NUM_SHUTDOWN_RECEIVERS};
-use fastcrypto::hash::Hash;
 #[allow(unused_imports)]
 use fastcrypto::traits::KeyPair;
 use prometheus::Registry;
