@@ -2419,6 +2419,8 @@ pub enum ExecutionFailureStatus {
     InvalidPublicFunctionReturnType { idx: u16 },
     #[error("Invalid Transfer Object, object does not have public transfer.")]
     InvalidTransferObject,
+    #[error("Invalid package upgrade. {upgrade_error}")]
+    PackageUpgradeError { upgrade_error: PackageUpgradeError },
     // NOTE: if you want to add a new enum,
     // please add it at the end for Rust SDK backward compatibility.
 }
@@ -2479,6 +2481,20 @@ pub enum CommandArgumentError {
     InvalidObjectByValue,
     #[error("Immutable objects cannot be passed by mutable reference, &mut.")]
     InvalidObjectByMutRef,
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Hash, Error)]
+pub enum PackageUpgradeError {
+    #[error("Unable to fetch package at {package_id}")]
+    UnableToFetchPackage { package_id: ObjectID },
+    #[error("Object {object_id} is not a package")]
+    NotAPackage { object_id: ObjectID },
+    #[error("New package is incompatible with previous version")]
+    IncompatibleUpgrade,
+    #[error("Digest in upgrade ticket and computed digest disagree")]
+    DigestDoesNotMatch { digest: Vec<u8> },
+    #[error("Upgrade policy {policy} is not a valid upgrade policy")]
+    UnknownUpgradePolicy { policy: u8 },
 }
 
 #[derive(Eq, PartialEq, Clone, Copy, Debug, Serialize, Deserialize, Hash, Error)]

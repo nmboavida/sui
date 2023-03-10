@@ -16,6 +16,7 @@ linked-hash-map = "0.5.6"
 tracing = "0.1.36"
 serde = { version = "1.0.140", features = ["derive"] }
 
+
 move-binary-format.workspace = true
 move-bytecode-utils.workspace = true
 move-bytecode-verifier.workspace = true
