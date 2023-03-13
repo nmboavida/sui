@@ -95,9 +95,8 @@ pub fn update_low_scoring_authorities(
         .iter()
         .for_each(|(a, s)| {
             let name = AuthorityName::from(a);
-            if !low_scoring_authorities.load().contains_key(&name) {
-                debug!("authority {} has score {}", name, s);
-            }
+            debug!("authority {} has score {}", name, s);
+            metrics.consensus_handler_scores.observe(*s as f64);
         });
 
     // make sure the rest have at least quorum
