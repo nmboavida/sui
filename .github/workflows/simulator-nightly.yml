@@ -39,16 +39,16 @@ jobs:
       # Runs tests much faster - disables signing and verification
       USE_MOCK_CRYPTO: 1
       CARGO_TERM_COLOR: always
+      NUM_CPUS: 4
 
     steps:
     - name: Cargo clean
       run: |
         cd ~/sui && cargo clean && git restore Cargo.lock
 
-    - name: Checkout sui repo main branch
-      uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # pin@v3
-      with:
-        path: '/home/ubuntu/sui'
+    - name: Checkout sui repo and cargo clean
+      run: |
+        cd ~/sui && git fetch origin && git rebase origin/main
 
     - name: Install simtest
       run: |
