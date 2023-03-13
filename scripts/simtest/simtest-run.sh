@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/bin/bash -x
 # Copyright (c) Mysten Labs, Inc.
 # SPDX-License-Identifier: Apache-2.0
+
+env
 
 if [ -z "$NUM_CPUS" ]; then
   NUM_CPUS=$(cat /proc/cpuinfo | grep processor | wc -l) # ubuntu
