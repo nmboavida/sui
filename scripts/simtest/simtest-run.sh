@@ -2,7 +2,10 @@
 # Copyright (c) Mysten Labs, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-NUM_CPUS=$(cat /proc/cpuinfo | grep processor | wc -l) # ubuntu
+if [ -z "$NUM_CPUS" ]; then
+  NUM_CPUS=$(cat /proc/cpuinfo | grep processor | wc -l) # ubuntu
+fi
+
 # NUM_CPUS=$(sysctl -n hw.ncpu) # mac
 # NUM_CPUS=64 # We can increase this later if needed
 
@@ -21,6 +24,7 @@ MSIM_WATCHDOG_TIMEOUT_MS=60000 \
 MSIM_TEST_NUM=30 \
 scripts/simtest/cargo-simtest simtest \
   --package sui \
+  --test-threads "$NUM_CPUS" \
   --package sui-core \
   --profile simtestnightly
 
