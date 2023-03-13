@@ -28,7 +28,7 @@ use anemo_tower::{
 use async_trait::async_trait;
 use config::{Committee, Parameters, WorkerCache, WorkerId, WorkerInfo};
 use consensus::dag::Dag;
-use crypto::{KeyPair, NetworkKeyPair, NetworkPublicKey, PublicKey, Signature};
+use crypto::{KeyPair, NetworkKeyPair, NetworkPublicKey, PublicKey, PublicKeyBytes, Signature};
 use fastcrypto::{
     hash::Hash,
     signature_service::SignatureService,
@@ -658,7 +658,7 @@ struct PrimaryReceiverHandler {
 impl PrimaryReceiverHandler {
     fn find_next_round(
         &self,
-        origin: &PublicKey,
+        origin: &PublicKeyBytes,
         current_round: Round,
         skip_rounds: &BTreeSet<Round>,
     ) -> Result<Option<Round>, anemo::rpc::Status> {
