@@ -27,13 +27,15 @@ use sui_types::{SUI_CLOCK_OBJECT_ID, SUI_CLOCK_OBJECT_SHARED_VERSION};
 #[sim_test]
 async fn shared_object_transaction() {
     let gas_objects = generate_test_gas_objects();
-    let shared_object = Object::shared_for_testing();
-    let mut objects = gas_objects.clone();
-    objects.push(Object::shared_for_testing());
+    let mut objects = vec![Object::shared_for_testing()];
+    objects.extend(gas_objects.into_iter());
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let (configs, _objects) = test_authority_configs_with_objects([]);
+    let (configs, objects) = test_authority_configs_with_objects(objects);
+    let mut objects = objects.into_iter();
+    let shared_object = objects.next().unwrap();
+    let gas_objects: Vec<_> = objects.collect();
     let _handles = spawn_test_authorities(&configs).await;
 
     // Make a test shared object certificate.
@@ -52,13 +54,16 @@ async fn shared_object_transaction() {
 #[sim_test]
 async fn many_shared_object_transactions() {
     let gas_objects = generate_test_gas_objects();
-    let shared_object = Object::shared_for_testing();
-    let mut objects = gas_objects.clone();
-    objects.push(Object::shared_for_testing());
+    let mut objects = vec![Object::shared_for_testing()];
+    objects.extend(gas_objects.into_iter());
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let (configs, _objects) = test_authority_configs_with_objects(objects);
+    let (configs, objects) = test_authority_configs_with_objects(objects);
+    let mut objects = objects.into_iter();
+    let shared_object = objects.next().unwrap();
+    let gas_objects: Vec<_> = objects.collect();
+
     let _handles = spawn_test_authorities(&configs).await;
 
     // Make a test shared object certificate.
@@ -129,10 +134,10 @@ async fn call_shared_object_contract() {
             .await
             .unwrap();
         assert!(matches!(effects.status(), ExecutionStatus::Success { .. }));
-        // Only gas object transaction and counter creation are dependencies
+        // Only genesis, assert_value, and counter creation are dependencies
         // Note that this assert would fail for second transaction
         // if they send counter_object_arg instead of counter_object_arg_imm
-        assert_eq!(effects.dependencies().len(), 2);
+        assert_eq!(effects.dependencies().len(), 3);
         assert!(effects
             .dependencies()
             .contains(&counter_creation_transaction));
@@ -151,9 +156,9 @@ async fn call_shared_object_contract() {
         .unwrap();
     let increment_transaction = *effects.transaction_digest();
     assert!(matches!(effects.status(), ExecutionStatus::Success { .. }));
-    // Again - only gas object transaction and counter creation are dependencies
+    // Again - only genesis, increment, and counter creation are dependencies
     // Previously executed assert_value transaction(s) are not a dependency because they took immutable reference to shared object
-    assert_eq!(effects.dependencies().len(), 2);
+    assert_eq!(effects.dependencies().len(), 3);
     assert!(effects
         .dependencies()
         .contains(&counter_creation_transaction));
@@ -181,8 +186,8 @@ async fn call_shared_object_contract() {
             .await
             .unwrap();
         assert!(matches!(effects.status(), ExecutionStatus::Success { .. }));
-        // Gas object transaction and increment transaction are dependencies
-        assert_eq!(effects.dependencies().len(), 2);
+        // Genesis, assert_value, and increment transaction are dependencies
+        assert_eq!(effects.dependencies().len(), 3);
         assert!(effects.dependencies().contains(&increment_transaction));
         assert_value_mut_transaction = Some(*effects.transaction_digest());
     }
@@ -211,7 +216,7 @@ async fn call_shared_object_contract() {
             command: Some(0),
         }
     );
-    assert_eq!(effects.dependencies().len(), 2);
+    assert_eq!(effects.dependencies().len(), 3);
     assert!(effects
         .dependencies()
         .contains(&assert_value_mut_transaction));
