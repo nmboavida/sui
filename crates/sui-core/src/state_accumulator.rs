@@ -83,8 +83,7 @@ impl StateAccumulator {
             .iter()
             .flat_map(|fx| {
                 fx.modified_at_versions()
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .map(|(id, seq_num)| ObjectKey(*id, *seq_num))
                     .collect::<Vec<ObjectKey>>()
             })
@@ -110,14 +109,13 @@ impl StateAccumulator {
                 .iter()
                 .flat_map(|fx| {
                     fx.deleted()
-                        .clone()
-                        .into_iter()
+                        .iter()
                         .map(|oref| oref.2)
                         .chain(fx.wrapped().iter().map(|oref| oref.2))
                         .chain(modified_at_digests.clone().into_iter())
                         .collect::<Vec<ObjectDigest>>()
                 })
-                .collect::<Vec<ObjectDigest>>(),
+                .collect::<HashSet<ObjectDigest>>(),
         );
 
         // TODO(william)
@@ -131,7 +129,7 @@ impl StateAccumulator {
                     .chain(modified_at_digests.iter().cloned())
                     .collect::<Vec<ObjectDigest>>()
             })
-            .collect::<Vec<ObjectDigest>>();
+            .collect::<HashSet<ObjectDigest>>();
         error!("TESTING -- num deletions: {}", deletions.len());
         error!("TESTING -- digests deleted: {:?}", deletions);
         error!(

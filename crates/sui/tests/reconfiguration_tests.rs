@@ -5,8 +5,10 @@ use futures::future::join_all;
 use move_core_types::ident_str;
 use mysten_metrics::RegistryService;
 use prometheus::Registry;
+use rand::{rngs::StdRng, SeedableRng};
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+use sui_config::builder::ConfigBuilder;
 use sui_core::authority_aggregator::{AuthAggMetrics, AuthorityAggregator};
 use sui_core::consensus_adapter::position_submit_certificate;
 use sui_core::safe_client::SafeClientMetricsBase;
@@ -14,8 +16,11 @@ use sui_core::signature_verifier::DefaultSignatureVerifier;
 use sui_core::test_utils::make_transfer_sui_transaction;
 use sui_macros::sim_test;
 use sui_node::SuiNodeHandle;
-use sui_types::crypto::ToFromBytes;
-use sui_types::crypto::{generate_proof_of_possession, get_account_key_pair};
+use sui_types::base_types::SuiAddress;
+use sui_types::crypto::{
+    generate_proof_of_possession, get_account_key_pair, get_key_pair_from_rng, AccountKeyPair,
+    KeypairTraits, ToFromBytes,
+};
 use sui_types::gas::GasCostSummary;
 use sui_types::message_envelope::Message;
 use sui_types::messages::{
@@ -27,7 +32,10 @@ use sui_types::utils::to_sender_signed_transaction;
 use sui_types::{
     SUI_FRAMEWORK_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_ID, SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
-use test_utils::authority::{start_node, test_and_configure_authority_configs};
+use test_utils::authority::{
+    start_node, test_and_configure_authority_configs,
+    test_and_configure_authority_configs_with_objects,
+};
 use test_utils::{
     authority::{
         spawn_test_authorities, test_authority_configs, test_authority_configs_with_objects,
@@ -321,10 +329,49 @@ async fn test_validator_resign_effects() {
 async fn test_reconfig_with_committee_change_basic() {
     // This test exercise the full flow of a validator joining the network, catch up and then leave.
 
+    // generate N keys - use a fixed RNG so we can regenerate the same set again later (keypairs
+    // are not Clone)
+    let gen_keys = |count| {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let mut account_keys: Vec<_> = (0..count)
+            .into_iter()
+            .map(|_| get_key_pair_from_rng::<AccountKeyPair, _>(&mut rng).1)
+            .collect();
+        account_keys
+    };
+
+    let new_validator_key = gen_keys(5).pop().unwrap();
+    let new_validator_address: SuiAddress = new_validator_key.public().into();
+
     // TODO: In order to better "test" this flow we probably want to set the validators to ignore
     // all p2p peer connections so that we can verify that new nodes joining can really "talk" with the
     // other validators in the set.
-    let init_configs = test_and_configure_authority_configs(4);
+    let gas_objects = generate_test_gas_objects_with_owner(4, new_validator_address);
+    let stake = Object::new_gas_with_balance_and_owner_for_testing(
+        30_000_000_000_000_000,
+        new_validator_address,
+    );
+    let mut objects = vec![stake.clone()];
+    objects.extend(gas_objects.clone());
+
+    let mut init_configs = ConfigBuilder::new_with_temp_dir()
+        .rng(StdRng::from_seed([0; 32]))
+        .with_validator_account_keys(gen_keys(4))
+        .with_objects(objects.clone())
+        .build();
+
+    let mut new_configs = ConfigBuilder::new_with_temp_dir()
+        .rng(StdRng::from_seed([0; 32]))
+        .with_validator_account_keys(gen_keys(5))
+        .with_objects(objects.clone())
+        .build();
+
+    let gas_objects: Vec<_> = gas_objects
+        .into_iter()
+        .map(|o| init_configs.genesis.object(o.id()).unwrap())
+        .collect();
+
+    let stake = init_configs.genesis.object(stake.id()).unwrap();
 
     // Generate a new validator config.
     // Our committee generation uses a fixed seed, so we need to generate a new committee
@@ -338,7 +385,6 @@ async fn test_reconfig_with_committee_change_basic() {
         .iter()
         .map(|v| v.protocol_key())
         .collect();
-    let new_configs = test_and_configure_authority_configs(5);
     let new_validator = new_configs
         .validator_set()
         .into_iter()
@@ -354,17 +400,7 @@ async fn test_reconfig_with_committee_change_basic() {
         new_validator.protocol_key.concise()
     );
 
-    let new_validator_address = new_node_config.sui_address();
-    let gas_objects = generate_test_gas_objects_with_owner(4, new_validator_address);
-    let stake = Object::new_gas_with_balance_and_owner_for_testing(
-        30_000_000_000_000_000,
-        new_validator_address,
-    );
-    let mut genesis_objects = gas_objects.clone();
-    genesis_objects.push(stake.clone());
-
-    let mut authorities =
-        spawn_test_authorities(genesis_objects.clone().into_iter(), &init_configs).await;
+    let mut authorities = spawn_test_authorities(&init_configs).await;
 
     let proof_of_possession =
         generate_proof_of_possession(new_node_config.protocol_key_pair(), new_validator_address);
@@ -405,8 +441,7 @@ async fn test_reconfig_with_committee_change_basic() {
         10000,
     )
     .unwrap();
-    let transaction =
-        to_sender_signed_transaction(candidate_tx_data, new_node_config.account_key_pair());
+    let transaction = to_sender_signed_transaction(candidate_tx_data, &new_validator_key);
     let effects = execute_transaction(&authorities, transaction)
         .await
         .unwrap();
@@ -484,16 +519,6 @@ async fn test_reconfig_with_committee_change_basic() {
         RegistryService::new(Registry::new()),
     )
     .await;
-    // We have to manually insert the genesis objects since the test utility doesn't.
-    handle
-        .with_async(|node| async {
-            node.state().insert_genesis_objects(&genesis_objects).await;
-            // When the node started, it's not part of the committee, and hence a fullnode.
-            assert!(node
-                .state()
-                .is_fullnode(&node.state().epoch_store_for_testing()));
-        })
-        .await;
     // Give the new validator enough time to catch up and sync.
     tokio::time::sleep(Duration::from_secs(30)).await;
     handle.with(|node| {

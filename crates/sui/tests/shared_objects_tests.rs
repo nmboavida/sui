@@ -224,12 +224,12 @@ async fn call_shared_object_contract() {
 
 #[sim_test]
 async fn access_clock_object_test() {
-    let mut gas_objects = generate_test_gas_objects();
+    let gas_objects = generate_test_gas_objects();
 
     // Get the authority configs and spawn them. Note that it is important to not drop
     // the handles (or the authorities will stop).
-    let configs = test_authority_configs();
-    let handles = spawn_test_authorities(gas_objects.clone(), &configs).await;
+    let (configs, mut gas_objects) = test_authority_configs_with_objects(gas_objects.clone());
+    let handles = spawn_test_authorities(&configs).await;
 
     // Publish the move package to all authorities and get its package ID.
     let package_id = publish_counter_package(gas_objects.pop().unwrap(), &configs.validator_set())

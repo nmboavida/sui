@@ -37,6 +37,7 @@ use sui_types::object::Object;
 pub enum CommitteeConfig {
     Size(NonZeroUsize),
     Validators(Vec<ValidatorConfigInfo>),
+    Keys(Vec<AccountKeyPair>),
 }
 
 enum ValidatorIpSelection {
@@ -106,6 +107,10 @@ impl ConfigBuilder {
             db_checkpoint_config: DBCheckpointConfig::default(),
         }
     }
+
+    pub fn new_with_temp_dir() -> Self {
+        Self::new(tempfile::tempdir().unwrap().into_path())
+    }
 }
 
 impl<R> ConfigBuilder<R> {
@@ -126,6 +131,11 @@ impl<R> ConfigBuilder<R> {
 
     pub fn committee_size(mut self, committee_size: NonZeroUsize) -> Self {
         self.committee = Some(CommitteeConfig::Size(committee_size));
+        self
+    }
+
+    pub fn with_validator_account_keys(mut self, keys: Vec<AccountKeyPair>) -> Self {
+        self.committee = Some(CommitteeConfig::Keys(keys));
         self
     }
 
@@ -202,37 +212,42 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
 
         let mut rng = self.rng.take().unwrap();
 
+        let validator_with_account_key =
+            |idx: usize, account_key_pair: AccountKeyPair, rng: &mut R| -> ValidatorConfigInfo {
+                let (key_pair, worker_key_pair, network_key_pair): (
+                    AuthorityKeyPair,
+                    NetworkKeyPair,
+                    NetworkKeyPair,
+                ) = (
+                    get_key_pair_from_rng(rng).1,
+                    get_key_pair_from_rng(rng).1,
+                    get_key_pair_from_rng(rng).1,
+                );
+
+                self.build_validator(
+                    idx,
+                    key_pair,
+                    worker_key_pair,
+                    account_key_pair.into(),
+                    network_key_pair,
+                )
+            };
+
         let validators = match committee {
             CommitteeConfig::Size(size) => (0..size.get())
                 .map(|i| {
-                    (
-                        i,
-                        (
-                            get_key_pair_from_rng(&mut rng).1,
-                            get_key_pair_from_rng(&mut rng).1,
-                            get_key_pair_from_rng::<AccountKeyPair, _>(&mut rng)
-                                .1
-                                .into(),
-                            get_key_pair_from_rng(&mut rng).1,
-                        ),
-                    )
+                    let account_key_pair = get_key_pair_from_rng::<AccountKeyPair, _>(&mut rng).1;
+                    validator_with_account_key(i, account_key_pair, &mut rng)
                 })
-                .map(
-                    |(i, (key_pair, worker_key_pair, account_key_pair, network_key_pair)): (
-                        _,
-                        (AuthorityKeyPair, NetworkKeyPair, SuiKeyPair, NetworkKeyPair),
-                    )| {
-                        self.build_validator(
-                            i,
-                            key_pair,
-                            worker_key_pair,
-                            account_key_pair,
-                            network_key_pair,
-                        )
-                    },
-                )
                 .collect::<Vec<_>>(),
+
             CommitteeConfig::Validators(v) => v,
+
+            CommitteeConfig::Keys(keys) => keys
+                .into_iter()
+                .enumerate()
+                .map(|(i, keypair)| validator_with_account_key(i, keypair, &mut rng))
+                .collect::<Vec<_>>(),
         };
 
         self.build_with_validators(rng, validators)
