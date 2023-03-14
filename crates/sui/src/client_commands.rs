@@ -450,6 +450,8 @@ pub enum SuiClientCommands {
         #[clap(long)]
         signatures: Vec<String>,
     },
+
+    FundValidators {},
 }
 
 impl SuiClientCommands {
@@ -814,6 +816,65 @@ impl SuiClientCommands {
                     .get_objects_owned_by_address(address)
                     .await?;
                 SuiClientCommandResult::Objects(address_object)
+            }
+
+            SuiClientCommands::FundValidators {} => {
+                let client = context.get_client().await?;
+                let sui_system_state = client
+                    .governance_api()
+                    .get_latest_sui_system_state()
+                    .await?;
+                let validator_addresses = sui_system_state
+                    .active_validators
+                    .iter()
+                    .map(|v| v.sui_address)
+                    .collect::<Vec<_>>();
+
+                let signer = context.active_address()?;
+
+                let gas_objects = context
+                    .gas_objects(signer)
+                    .await?
+                    .iter()
+                    // Ok to unwrap() since `get_gas_objects` guarantees gas
+                    .map(|(_val, object, _object_ref)| GasCoin::try_from(object).unwrap())
+                    .collect::<Vec<_>>();
+
+                assert!(gas_objects.len() >= validator_addresses.len());
+                for (address, obj) in validator_addresses.iter().zip(&gas_objects) {
+                    let data = client
+                        .transaction_builder()
+                        .pay_sui(
+                            signer,
+                            vec![*obj.id()],
+                            vec![*address],
+                            vec![5_000_000_000_000],
+                            1000,
+                        )
+                        .await?;
+                    let signature =
+                        context
+                            .config
+                            .keystore
+                            .sign_secure(&signer, &data, Intent::default())?;
+                    let response = context
+                        .execute_transaction(
+                            Transaction::from_data(data, Intent::default(), vec![signature])
+                                .verify()?,
+                        )
+                        .await?;
+                    let effects = response.effects.as_ref().ok_or_else(|| {
+                        anyhow!("Effects from SuiTransactionResult should not be empty")
+                    })?;
+                    if matches!(effects.status(), SuiExecutionStatus::Failure { .. }) {
+                        return Err(anyhow!(
+                            "Error executing PaySui transaction: {:#?}",
+                            effects.status()
+                        ));
+                    }
+                }
+
+                SuiClientCommandResult::FundValidators
             }
 
             SuiClientCommands::NewAddress {
@@ -1297,6 +1358,9 @@ impl Display for SuiClientCommandResult {
             SuiClientCommandResult::Call(response) => {
                 write!(writer, "{}", write_transaction_response(response)?)?;
             }
+            SuiClientCommandResult::FundValidators => {
+                write!(writer, "FundValidators")?;
+            }
             SuiClientCommandResult::Transfer(time_elapsed, response) => {
                 writeln!(writer, "Transfer confirmed after {} us", time_elapsed)?;
                 write!(writer, "{}", write_transaction_response(response)?)?;
@@ -1600,6 +1664,7 @@ pub enum SuiClientCommandResult {
     DynamicFieldQuery(DynamicFieldPage),
     SyncClientState,
     NewAddress((SuiAddress, String, SignatureScheme)),
+    FundValidators,
     Gas(Vec<GasCoin>),
     SplitCoin(SuiTransactionResponse),
     MergeCoin(SuiTransactionResponse),
