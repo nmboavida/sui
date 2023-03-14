@@ -1,5 +1,61 @@
 # @mysten/sui.js
 
+## 0.30.0
+
+### Minor Changes
+
+- 956ec28eb: Change `signMessage` to return message bytes. Add support for sui:signMessage in the wallet standard
+- acc2edb31: Update schema for `SuiSystemState` and `DelegatedStake`
+- a6690ac7d: Changed the default behavior of `publish` to publish an upgreadeable-by-sender package instead of immutable.
+- a211dc03a: Change object digest from Base64 encoded to Base58 encoded for rpc version >= 0.28.0
+- 19b567f21: Unified self- and delegated staking flows. Removed fields from `Validator` (`stake_amount`, `pending_stake`, and `pending_withdraw`) and renamed `delegation_staking_pool` to `staking_pool`. Additionally removed the `validator_stake` and `delegated_stake` fields in the `ValidatorSet` type and replaced them with a `total_stake` field.
+- 7659e2e91: Introduce new `Transaction` builder class, and deprecate all existing methods of sending transactions. The new builder class is designed to take full advantage of Programmable Transactions. Any transaction using the previous `SignableTransaction` interface will be converted to a `Transaction` class when possible, but this interface will be fully removed soon.
+- 0d3cb44d9: Change all snake_case field in ts-sdk normalized.ts to camelCase.
+- 36c264ebb: Remove `generateTransactionDigest`. Use one of the following instead: `signer.getTransactionDigest`, `Transaction.getDigest()` or `TransactionDataBuilder.getDigestFromBytes()` instead.
+- 6bd88570c: Rework all coin APIs to take objects as arguments instead of positional arguments.
+- f1e42f792: Consolidate get_object and get_raw_object into a single get_object endpoint which now takes an additional config parameter with type `SuiObjectDataOptions` and has a new return type `SuiObjectResponse`. By default, only object_id, version, and digest are fetched.
+- 272389c20: Support for new versioned TransactionData format
+- 3de8de361: Remove `getSuiSystemState` method. Use `getLatestSuiSystemState` method instead.
+- be3c4f51e: Add `display` field in `SuiObjectResponse` for frontend rendering. See more details in https://forums.sui.io/t/nft-object-display-proposal/4872
+- dbe73d5a4: Update `executeTransaction` and `signAndExecuteTransaction` to take in an additional parameter `SuiTransactionResponseOptions` which is used to specify which fields to include in `SuiTransactionResponse` (e.g., transaction, effects, events, etc). By default, only the transaction digest will be included.
+- c82e4b454: Introduce BigInt struct to sui-json-rpc-types to serialize and deserialize amounts to/from string. Change ts-sdk to serialize amounts of PaySui and Pay as string.
+- 2ef2bb59e: Deprecate getTransactionDigestsInRange. This method will be removed before April 2023, please use `getTransactions` instead
+- 5c3b00cde: Add object id to staking pool and pool id to staked sui.
+- 01272ab7d: Remove deprecated `getCheckpointContents`, `getCheckpointContentsByDigest`, `getCheckpointSummary` and `getCheckpointSummaryByDigest` methods.
+- 3d9a04648: Adds `deactivation_epoch` to staking pool object, and adds `inactive_pools` to the validator set object.
+- a0955c479: Switch from 20 to 32-byte address. Match Secp256k1.deriveKeypair with Ed25519.
+- 0a7b42a6d: This changes almost all occurences of "delegate", "delegation" (and various capitalizations/forms) to their equivalent "stake"-based name. Function names, function argument names, RPC endpoints, Move functions, and object fields have been updated with this new naming convention.
+- 3de8de361: Remove `getValidators` API. Use `getLatestSuiSystemState` instead.
+- dd348cf03: Refactor `getTransactions` to `queryTransactions`
+- 57c17e02a: Removed `JsonRpcProviderWithCache`, use `JsonRpcProvider` instead.
+- 65f1372dd: Rename `provider.getTransactionWithEffects` to `provider.getTransactionResponse`. The new method takes in an additional parameter `SuiTransactionResponseOptions` to configure which fields to fetch(transaction, effects, events, etc). By default, only the transaction digest will be returned.
+- fe335e6ba: Removed usage of `cross-fetch` in the TypeScript SDK. If you are running in an environment that does not have `fetch` defined, you will need to polyfill it.
+- 64234baaf: added combined `getCheckpoint` endpoint for retrieving information about a checkpoint
+- d3170ba41: All JSON-RPC APIs now accept objects instead of positional arugments.
+- a6ffb8088: Removed events from transaction effects, TransactionEvents will now be provided in the TransactionResponse, along side TransactionEffects.
+- 3304eb83b: Refactor Rust SuiTransactionKind to be internally tagged for Json serialization with tag="type" and SuiEvent to be adjacently tagged with tag="type" and content="content"
+- 4189171ef: Adds support for validator candidate.
+- a74df16ec: Minor change to the system transaction format
+- 9b60bf700: Change all snake_case fields in checkpoint.ts and faucet.ts to camelCase
+- 64fb649eb: Remove old `SuiExecuteTransactionResponse` interface, and `CertifiedTransaction` interface in favor of the new unified `SuiTransactionResponse` interfaces.
+
+### Patch Changes
+
+- 00bb9bb66: Correct "consensus_address" in ValidatorMetadata to "primary_address"
+- 14ba89144: Change StakingPool structure by removing pool token supply and adding exchange rates.
+- 165ef3c45: selectCoinsWithBalanceGreaterThanOrEqual and selectCoinWithBalanceGreaterThanOrEqual uses CoinStruct instead of ObjectDataFull. Coin.totalBalance, sortByBalance expects CoinStruct. Added getBalanceFromCoinStruct.
+- 3eb3a1de8: Make Ed25519 ExportedKeyPair only use 32 bytes seed.
+- 4593333bd: Add optional parameter for filtering object by type in getOwnedObjectsByAddress
+- 79c2165cb: Remove locked coin staking
+- 210840114: Add cross-env to prepare:e2e script for Windows machines functionality
+- Updated dependencies [19b567f21]
+- Updated dependencies [5c3b00cde]
+- Updated dependencies [3d9a04648]
+- Updated dependencies [a8049d159]
+- Updated dependencies [a0955c479]
+- Updated dependencies [0a7b42a6d]
+  - @mysten/bcs@0.7.0
+
 ## 0.29.1
 
 ### Patch Changes
