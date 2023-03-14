@@ -7,10 +7,12 @@ mod test {
     use rand::{thread_rng, Rng};
     use std::str::FromStr;
     use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
-    use sui_benchmark::benchmark_setup::ProxyGasAndCoin;
+    use sui_benchmark::bank::BenchmarkBank;
+    use sui_benchmark::benchmark_setup::BenchmarkSetup;
     use sui_benchmark::system_state_observer::SystemStateObserver;
-    use sui_benchmark::workloads::workload_configuration::configure_combined_mode;
+    use sui_benchmark::workloads::workload_configuration::WorkloadConfiguration;
     use sui_benchmark::{
         drivers::{bench_driver::BenchDriver, driver::Driver, Interval},
         util::get_ed25519_keypair_from_keystore,
@@ -25,6 +27,7 @@ mod test {
     use sui_types::object::Owner;
     use test_utils::messages::get_sui_gas_object_with_wallet_context;
     use test_utils::network::{TestCluster, TestClusterBuilder};
+    use tokio::runtime::Builder;
     use tracing::info;
     use typed_store::traits::Map;
 
@@ -243,13 +246,7 @@ mod test {
                 .await,
         );
 
-        let proxy_gas_and_coins = vec![ProxyGasAndCoin {
-            primary_gas,
-            pay_coin,
-            pay_coin_type_tag,
-            proxy: proxy.clone(),
-        }];
-
+        let bank = BenchmarkBank::new(proxy.clone(), primary_gas, pay_coin, pay_coin_type_tag);
         let system_state_observer = {
             let mut system_state_observer = SystemStateObserver::new(proxy.clone());
             if let Ok(_) = system_state_observer.reference_gas_price.changed().await {
@@ -257,6 +254,7 @@ mod test {
             }
             Arc::new(system_state_observer)
         };
+
         // The default test parameters are somewhat conservative in order to keep the running time
         // of the test reasonable in CI.
         let target_qps = get_var("SIM_STRESS_TEST_QPS", 10);
@@ -268,7 +266,7 @@ mod test {
         let delegation_weight = 1;
         let shared_counter_hotness_factor = 50;
 
-        let proxy_workloads = configure_combined_mode(
+        let workloads = WorkloadConfiguration::build_workloads(
             num_workers,
             num_transfer_accounts,
             shared_counter_weight,
@@ -277,9 +275,9 @@ mod test {
             shared_counter_hotness_factor,
             target_qps,
             in_flight_ratio,
-            proxy_gas_and_coins,
+            bank,
             system_state_observer.clone(),
-            1000,
+            100,
         )
         .await
         .unwrap();
@@ -298,7 +296,8 @@ mod test {
         let show_progress = interval.is_unbounded();
         let (benchmark_stats, _) = driver
             .run(
-                proxy_workloads,
+                vec![proxy],
+                workloads,
                 system_state_observer,
                 &registry,
                 show_progress,
