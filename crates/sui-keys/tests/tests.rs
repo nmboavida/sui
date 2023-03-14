@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 use std::str::FromStr;
 
-use fastcrypto::hash::{HashFunction, Sha3_256};
+use fastcrypto::hash::HashFunction;
 use tempfile::TempDir;
 
 use sui_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
-use sui_types::crypto::{SignatureScheme, SuiSignatureInner};
+use sui_types::crypto::{DefaultHash, SignatureScheme, SuiSignatureInner};
 use sui_types::{
     base_types::{SuiAddress, SUI_ADDRESS_LENGTH},
     crypto::Ed25519SuiSignature,
@@ -47,7 +47,7 @@ fn sui_wallet_address_mnemonic_test() -> Result<(), anyhow::Error> {
     let pubkey = keystore.keys()[0].clone();
     assert_eq!(pubkey.flag(), Ed25519SuiSignature::SCHEME.flag());
 
-    let mut hasher = Sha3_256::default();
+    let mut hasher = DefaultHash::default();
     hasher.update([pubkey.flag()]);
     hasher.update(pubkey);
     let g_arr = hasher.finalize();

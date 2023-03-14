@@ -8,10 +8,7 @@ use crate::coin::LockedCoin;
 use crate::coin::COIN_MODULE_NAME;
 use crate::coin::COIN_STRUCT_NAME;
 pub use crate::committee::EpochId;
-use crate::crypto::{
-    AuthorityPublicKey, AuthorityPublicKeyBytes, KeypairTraits, PublicKey, SignatureScheme,
-    SuiPublicKey, SuiSignature, UserHash,
-};
+use crate::crypto::{AuthorityPublicKey, AuthorityPublicKeyBytes, DefaultHash, KeypairTraits, PublicKey, SignatureScheme, SuiPublicKey, SuiSignature};
 pub use crate::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
 use crate::dynamic_field::DynamicFieldInfo;
 use crate::dynamic_field::DynamicFieldType;
@@ -434,13 +431,13 @@ impl TryFrom<Vec<u8>> for SuiAddress {
 
 impl From<&AuthorityPublicKeyBytes> for SuiAddress {
     fn from(pkb: &AuthorityPublicKeyBytes) -> Self {
-        let mut hasher = UserHash::default();
+        let mut hasher = DefaultHash::default();
         hasher.update([AuthorityPublicKey::SIGNATURE_SCHEME.flag()]);
         hasher.update(pkb);
         let g_arr = hasher.finalize();
 
         let mut res = [0u8; SUI_ADDRESS_LENGTH];
-        // OK to access slice because Sha3_256 should never be shorter than SUI_ADDRESS_LENGTH.
+        // OK to access slice because digest should never be shorter than SUI_ADDRESS_LENGTH.
         res.copy_from_slice(&AsRef::<[u8]>::as_ref(&g_arr)[..SUI_ADDRESS_LENGTH]);
         SuiAddress(res)
     }
@@ -448,13 +445,13 @@ impl From<&AuthorityPublicKeyBytes> for SuiAddress {
 
 impl<T: SuiPublicKey> From<&T> for SuiAddress {
     fn from(pk: &T) -> Self {
-        let mut hasher = UserHash::default();
+        let mut hasher = DefaultHash::default();
         hasher.update([T::SIGNATURE_SCHEME.flag()]);
         hasher.update(pk);
         let g_arr = hasher.finalize();
 
         let mut res = [0u8; SUI_ADDRESS_LENGTH];
-        // OK to access slice because Sha3_256 should never be shorter than SUI_ADDRESS_LENGTH.
+        // OK to access slice because digest should never be shorter than SUI_ADDRESS_LENGTH.
         res.copy_from_slice(&AsRef::<[u8]>::as_ref(&g_arr)[..SUI_ADDRESS_LENGTH]);
         SuiAddress(res)
     }
@@ -462,13 +459,13 @@ impl<T: SuiPublicKey> From<&T> for SuiAddress {
 
 impl From<&PublicKey> for SuiAddress {
     fn from(pk: &PublicKey) -> Self {
-        let mut hasher = UserHash::default();
+        let mut hasher = DefaultHash::default();
         hasher.update([pk.flag()]);
         hasher.update(pk);
         let g_arr = hasher.finalize();
 
         let mut res = [0u8; SUI_ADDRESS_LENGTH];
-        // OK to access slice because Sha3_256 should never be shorter than SUI_ADDRESS_LENGTH.
+        // OK to access slice because digest should never be shorter than SUI_ADDRESS_LENGTH.
         res.copy_from_slice(&AsRef::<[u8]>::as_ref(&g_arr)[..SUI_ADDRESS_LENGTH]);
         SuiAddress(res)
     }
@@ -479,7 +476,7 @@ impl From<&PublicKey> for SuiAddress {
 /// of all participating public keys and its weight.
 impl From<MultiSigPublicKey> for SuiAddress {
     fn from(multisig_pk: MultiSigPublicKey) -> Self {
-        let mut hasher = UserHash::default();
+        let mut hasher = DefaultHash::default();
         hasher.update([SignatureScheme::MultiSig.flag()]);
         hasher.update(multisig_pk.threshold().to_le_bytes());
         multisig_pk.pubkeys().iter().for_each(|(pk, w)| {
@@ -490,7 +487,7 @@ impl From<MultiSigPublicKey> for SuiAddress {
         let g_arr = hasher.finalize();
 
         let mut res = [0u8; SUI_ADDRESS_LENGTH];
-        // OK to access slice because Sha3_256 should never be shorter than SUI_ADDRESS_LENGTH.
+        // OK to access slice because digest should never be shorter than SUI_ADDRESS_LENGTH.
         res.copy_from_slice(&AsRef::<[u8]>::as_ref(&g_arr)[..SUI_ADDRESS_LENGTH]);
         SuiAddress(res)
     }
@@ -892,13 +889,13 @@ impl ObjectID {
     pub fn derive_id(digest: TransactionDigest, creation_num: u64) -> Self {
         // TODO(https://github.com/MystenLabs/sui/issues/58):audit ID derivation
 
-        let mut hasher = UserHash::default();
+        let mut hasher = DefaultHash::default();
         hasher.update(digest);
         hasher.update(creation_num.to_le_bytes());
         let hash = hasher.finalize();
 
         // truncate into an ObjectID.
-        // OK to access slice because Sha3_256 should never be shorter than ObjectID::LENGTH.
+        // OK to access slice because digest should never be shorter than ObjectID::LENGTH.
         ObjectID::try_from(&hash.as_ref()[0..ObjectID::LENGTH]).unwrap()
     }
 

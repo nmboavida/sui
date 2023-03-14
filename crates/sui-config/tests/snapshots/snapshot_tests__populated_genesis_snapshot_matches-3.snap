@@ -9,7 +9,7 @@ validators:
   total_stake: 25000000000000000
   active_validators:
     - metadata:
-        sui_address: "0x21b60aa9a8cb189ccbe20461dbfad2202fdef55b9418f30ac2c5fe632f6e1cb7"
+        sui_address: "0x73a6b3c33e2d63383de5c6786cbaca231ff789f4c853af6d54cb883d8780adc0"
         protocol_pubkey_bytes:
           - 153
           - 242
@@ -174,54 +174,54 @@ validators:
           - 215
           - 117
         proof_of_possession_bytes:
-          - 170
-          - 154
-          - 96
-          - 173
-          - 243
-          - 253
-          - 19
-          - 242
-          - 199
-          - 210
-          - 222
-          - 31
-          - 105
-          - 119
-          - 107
-          - 78
-          - 237
-          - 65
-          - 123
-          - 138
-          - 27
-          - 12
-          - 53
-          - 7
-          - 106
-          - 134
-          - 241
-          - 161
-          - 120
-          - 171
-          - 26
-          - 169
-          - 6
-          - 67
-          - 207
-          - 133
-          - 46
-          - 57
-          - 251
-          - 29
-          - 34
-          - 228
-          - 24
-          - 5
-          - 151
-          - 2
+          - 176
+          - 81
+          - 164
+          - 232
+          - 143
           - 71
-          - 102
+          - 217
+          - 26
+          - 206
+          - 233
+          - 63
+          - 195
+          - 47
+          - 30
+          - 65
+          - 201
+          - 145
+          - 199
+          - 195
+          - 120
+          - 45
+          - 204
+          - 61
+          - 44
+          - 156
+          - 62
+          - 176
+          - 15
+          - 202
+          - 179
+          - 6
+          - 85
+          - 117
+          - 235
+          - 141
+          - 16
+          - 201
+          - 85
+          - 81
+          - 255
+          - 154
+          - 70
+          - 63
+          - 157
+          - 87
+          - 56
+          - 150
+          - 193
         name: "0"
         description: ""
         image_url: ""
@@ -239,10 +239,10 @@ validators:
         next_epoch_primary_address: ~
         next_epoch_worker_address: ~
       voting_power: 10000
-      operation_cap_id: "0x18b8140c8a6ea340142f128061016fc4bd8220ec88875a8e573a5f72a85a15c1"
+      operation_cap_id: "0xe4cfbd3d56a2360ffe015359543f5d29a8b70d759289a691733473c8ba0aa0d2"
       gas_price: 1
       staking_pool:
-        id: "0xd5d9aa879b78dc1f516d71ab979189086eff752f65e4b0dea15829e3157962e1"
+        id: "0x3f98002740c8cdde1a3d5cfcc2e9e726b21e42a9ebf44762ab179824a07bb8d5"
         activation_epoch: 0
         deactivation_epoch: ~
         sui_balance: 25000000000000000
@@ -250,7 +250,7 @@ validators:
           value: 0
         pool_token_balance: 25000000000000000
         exchange_rates:
-          id: "0xe63945cec193ca7ac76960370028110a907ad1c22ff90b1fd57ea3c441c766b4"
+          id: "0x02e802f4a6e28a6684ed09822a58d87a4ad2d38f53d91fd28165147da800244e"
           size: 1
         pending_stake: 0
         pending_total_sui_withdraw: 0
@@ -261,17 +261,17 @@ validators:
       next_epoch_commission_rate: 0
   pending_active_validators:
     contents:
-      id: "0x1ace65f54d65a96251b3f46bfa720ab65a7ebe0174caa9fa1dc0d65a56ae7872"
+      id: "0x7447217f44f65bf932b02c94e636c3ba70b5e6adbc683e2536e0dfd0deb09c5e"
       size: 0
   pending_removals: []
   staking_pool_mappings:
-    id: "0x628ffd0e51e9a6ea32c13c2739a31a8f344b557d3429e057b377a9c499b9bb13"
+    id: "0xde777a07e5de14c877b773fba62b1e7d5e23e17cc9d969c5dcfb24753a64c9f8"
     size: 1
   inactive_pools:
-    id: "0x9dc97c4be6f1d0e61fbdf2cc9d78f9df04cdff7a473e2ec3a65853766dca1177"
+    id: "0xfc02e8c8978cd7f27fe07011fa17873c0b2869e7d64ca430e1fbcc74aa572b84"
     size: 0
   validator_candidates:
-    id: "0x6d3ffc5213ed4df6802cd4535d3c18f66d85bab5e9f004a7087a005e2f8dc455"
+    id: "0x0ce04d2c5a6141bae4672286527fc2e7448207b59bf90ca89e05d61d5d64d2e2"
     size: 0
   at_risk_validators:
     contents: []
