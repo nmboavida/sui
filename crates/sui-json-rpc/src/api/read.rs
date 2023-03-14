@@ -5,11 +5,11 @@ use jsonrpsee::core::RpcResult;
 use jsonrpsee_proc_macros::rpc;
 use std::collections::BTreeMap;
 use sui_json_rpc_types::{
-    Checkpoint, CheckpointId, DynamicFieldPage, MoveFunctionArgType, SuiGetPastObjectRequest,
-    SuiMoveNormalizedFunction, SuiMoveNormalizedModule, SuiMoveNormalizedStruct,
-    SuiObjectDataOptions, SuiObjectInfo, SuiObjectResponse, SuiPastObjectResponse,
-    SuiTransactionResponse, SuiTransactionResponseOptions, SuiTransactionResponseQuery,
-    TransactionsPage,
+    Checkpoint, CheckpointId, CheckpointPage, DynamicFieldPage, MoveFunctionArgType,
+    SuiGetPastObjectRequest, SuiMoveNormalizedFunction, SuiMoveNormalizedModule,
+    SuiMoveNormalizedStruct, SuiObjectDataOptions, SuiObjectInfo, SuiObjectResponse,
+    SuiPastObjectResponse, SuiTransactionResponse, SuiTransactionResponseOptions,
+    SuiTransactionResponseQuery, TransactionsPage,
 };
 use sui_open_rpc_macros::open_rpc;
 use sui_types::base_types::{
@@ -204,4 +204,16 @@ pub trait ReadApi {
         /// Checkpoint identifier, can use either checkpoint digest, or checkpoint sequence number as input.
         id: CheckpointId,
     ) -> RpcResult<Checkpoint>;
+
+    /// Return pagenated list of checkpoints
+    #[method(name = "getCheckpoints")]
+    async fn get_checkpoints(
+        &self,
+        /// Optional paging cursor
+        cursor: Option<usize>,
+        /// Maximum item returned per page, default to QUERY_MAX_RESULT_LIMIT if not specified.
+        limit: Option<usize>,
+        /// query result ordering, default to false (ascending order), oldest record first.
+        descending_order: bool,
+    ) -> RpcResult<CheckpointPage>;
 }
