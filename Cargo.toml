@@ -105,7 +105,7 @@ opt-level = 1
 # Dependencies that should be kept in sync through the whole workspace
 [workspace.dependencies]
 
-tokio = "1.24.1"
+tokio = "1.24.2"
 
 # Move dependencies
 move-binary-format = { git = "https://github.com/move-language/move", rev = "8729cf2445696cb29f1e0ca06df7d09cf3c2c55f" }
